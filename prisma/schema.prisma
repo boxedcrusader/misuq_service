@@ -1,0 +1,393 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────
+
+enum Plan {
+  DRAFT_ONLY
+  STARTER
+  GROWTH
+  SCALE
+}
+
+// Best-guess starting list (README §5) — edit before the first migration.
+// Painful to change once SignalRecord/AggregatedInsight rows are keyed on it.
+enum Niche {
+  DEV_TOOLS
+  AI_TOOLS
+  PRODUCTIVITY
+  NO_CODE
+  MARKETING_TOOLS
+  ANALYTICS
+  DESIGN_TOOLS
+  ECOMMERCE
+  FINTECH
+  OTHER
+}
+
+// A feature announcement is a feature announcement wherever it goes (§5),
+// so this lives on Story, not ContentPiece.
+enum ContentType {
+  FEATURE_ANNOUNCEMENT
+  MILESTONE
+  LESSON_LEARNED
+  OTHER
+}
+
+enum Channel {
+  EMAIL
+  X
+  LINKEDIN
+  BLOG
+  DISCORD
+}
+
+enum Stage {
+  PREVIEW
+  WIDE
+}
+
+// Tone flexes per channel (§5), so it lives on ContentPiece, not Story.
+// Starting list, same "edit before first migration" caveat as Niche.
+enum Tone {
+  VULNERABLE
+  CONFIDENT
+  EDUCATIONAL
+  CASUAL
+  PROFESSIONAL
+  HUMBLE
+  CELEBRATORY
+  REFLECTIVE
+  // Placeholder for drafts with no real tone judgment yet (e.g. the stub
+  // drafting provider, before a real LLM classifies tone).
+  OTHER
+}
+
+enum AudienceType {
+  EMAIL_LIST
+  DISCORD
+  BETA_USERS
+  PEERS
+}
+
+// Coarse structured read of the freeform feedback's overall tone (§5 step
+// 4). Silence/no-response is NOT a sentiment value — it's captured by
+// leaving replyCount/signupCount null (not reported) or 0 (confirmed no
+// replies), and sentiment itself null when the founder gave no read on
+// tone. Conflating "nobody responded" into this enum would blur the
+// null-vs-zero distinction the count fields rely on.
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  MIXED
+  NEGATIVE
+}
+
+enum PostFormat {
+  SINGLE
+  THREAD
+  QUOTE
+  REPLY
+  LONGFORM
+}
+
+// Stored, not derived (README §2/§5): the full loop is CAPTURED -> DRAFTED
+// -> STAGED -> REPORTED -> GRADUATED -> ARCHIVED. GRADUATED in particular
+// is a human judgment call (§2: "validation is human-gated") — no relation
+// row-count can encode a decision, so it cannot be a derived flag the way
+// a 2-state slice might tempt you to build it. Written only by the service
+// method that causes the transition, in the same transaction as the
+// causing write; reads use this column only, never re-derived from a
+// relation. See capture.service.ts for the transition map.
+//
+// NOTE: GRADUATED overlaps with the existing Story.graduatedAt timestamp
+// below, which already serves as the founder's one human-gated decision
+// signal. Whichever module implements the graduate step MUST write both
+// fields atomically (graduatedAt and status = GRADUATED, same transaction)
+// or this reintroduces the exact two-sources-of-truth problem this enum
+// was added to avoid. Not resolved here — flagged so it isn't missed.
+enum StoryStatus {
+  CAPTURED
+  DRAFTED
+  STAGED
+  REPORTED
+  GRADUATED
+  ARCHIVED
+}
+
+// Same reasoning as StoryStatus: EDITED is an event (the founder or agent
+// changed the draft body), not something derivable from a relation. Only
+// DRAFTED and EDITED exist for now, matching the only transitions this
+// slice's caller (an "edit draft" endpoint, not yet built) could produce;
+// extend when that endpoint exists rather than guessing further states now.
+enum ContentPieceStatus {
+  DRAFTED
+  EDITED
+  SENT
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Private / messy layer — one founder's raw material (README §5)
+// ─────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  passwordHash String
+  name         String?
+  plan         Plan    @default(DRAFT_ONLY)
+
+  // Default false = affirmative opt-in, reversible (§5 rule 2). Checked live
+  // at query time when pooling into AggregatedInsight — never snapshotted.
+  aggregateLearningConsent Boolean @default(false)
+  niche                    Niche?
+
+  // Minimal JWT refresh-token storage (§4) — hash only, never the raw token.
+  hashedRefreshToken String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stories       Story[]
+  audiences     Audience[]
+  voiceProfile  VoiceProfile?
+  signalRecords SignalRecord[]
+}
+
+model Story {
+  id          String      @id @default(cuid())
+  userId      String
+  rawCapture  String
+  title       String?
+  contentType ContentType
+  status      StoryStatus @default(CAPTURED)
+
+  // Set only by the founder — the one human-gated graduation decision (§2).
+  graduatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contentPieces ContentPiece[]
+}
+
+model ContentPiece {
+  id      String             @id @default(cuid())
+  storyId String
+  channel Channel
+  stage   Stage
+  tone    Tone
+  body    String
+  status  ContentPieceStatus @default(DRAFTED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  story Story  @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  sends Send[]
+}
+
+model Audience {
+  id     String       @id @default(cuid())
+  userId String
+  name   String
+  type   AudienceType
+
+  // Founder-supplied headcount. Required, no default: Send.audienceSizeSnapshot
+  // freezes this value into a required Int at send time (§5 rule 4), so there
+  // is no live "unknown size" state to reconcile against a required snapshot.
+  // Grows over time as the founder's list/room grows; Send never reads this
+  // column again after staging — it reads its own frozen snapshot.
+  size Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sends Send[]
+
+  // Restrict, not Cascade: Send.audienceSizeSnapshot is frozen at send time,
+  // but an accidental Audience delete shouldn't silently orphan send history.
+  // Tested (prisma/scripts/test-user-delete-cascade.js): switching this to
+  // NoAction does NOT let a plain prisma.user.delete() succeed. Postgres
+  // only defers a NO ACTION check to end-of-statement when the constraint
+  // is DEFERRABLE; Prisma has no schema attribute for that, so the default,
+  // non-deferrable NO ACTION checks immediately, same as Restrict, and
+  // still fires before the User-delete cascade (Story -> ContentPiece ->
+  // Send) removes the referencing Send row. Verified this fails identically
+  // via a raw `DELETE FROM "User"` in psql, so it's genuine Postgres FK
+  // behavior, not a Prisma query-engine artifact.
+  // Account deletion MUST go through deleteUserCascade() in
+  // prisma/scripts/deleteUserCascade.js, which deletes the blocking rows in
+  // dependency order inside a transaction before deleting the User row.
+  // Do not call prisma.user.delete() directly from the service layer.
+  @@index([userId])
+}
+
+model Send {
+  id             String @id @default(cuid())
+  contentPieceId String
+  audienceId     String
+
+  // Frozen at send time, never read live (§5 rule 4) — "3 replies" means
+  // something different at 5 peers vs. 5,000 subscribers.
+  audienceSizeSnapshot Int
+  sentAt               DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contentPiece   ContentPiece    @relation(fields: [contentPieceId], references: [id], onDelete: Cascade)
+  audience       Audience        @relation(fields: [audienceId], references: [id], onDelete: Restrict)
+  feedbackReport FeedbackReport?
+
+  // A double-click isn't a real second event; two Sends of the same piece to
+  // the same audience would later mean two report-backs and double-counted
+  // moat signal (README §5). Staging the same piece to a DIFFERENT audience
+  // is a real, distinct send and stays allowed.
+  @@unique([contentPieceId, audienceId])
+}
+
+model FeedbackReport {
+  id          String @id @default(cuid())
+  // Unique: one report per Send (README §2 step 4 is one conversation per
+  // staged send, not a running thread). Also the race backstop behind
+  // report-back's service-level duplicate guard.
+  sendId      String @unique
+  rawFeedback String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  send Send @relation(fields: [sendId], references: [id], onDelete: Cascade)
+
+  // Restrict: once a SignalRecord is derived from a report, the report
+  // becomes a permanent historical source and must not be deletable out
+  // from under it (§5 rule 1 — "once the grade is written it's permanent").
+  // Same immediate-check issue as Audience -> Send in Send below: tested
+  // and confirmed NoAction doesn't help here either (non-deferrable NO
+  // ACTION == Restrict in Postgres). Account deletion goes through
+  // deleteUserCascade() (prisma/scripts/deleteUserCascade.js), which
+  // deletes SignalRecords before this row would ever be touched by cascade.
+  signalRecord SignalRecord?
+}
+
+model VoiceProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // Loose bag by design — read only by this founder's own agent, never
+  // pooled (§5).
+  data Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Structured / poolable layer — the moat (README §5)
+// ─────────────────────────────────────────────────────────────────────────
+
+model SignalRecord {
+  id     String @id @default(cuid())
+  userId String
+
+  // Required + unique in V1 (every signal comes from exactly one
+  // report-back — the Send -> FeedbackReport -> SignalRecord chain is 1:1:1,
+  // which is what makes signal per-SEND rather than per-piece: one piece
+  // staged to two audiences is two Sends, two reports, two independent
+  // signals). Must go nullable the moment platform-derived signal (scraped
+  // views) ships, at which point this may need to stop being unique too.
+  feedbackReportId String @unique
+
+  // Snapshotted dimensions, not re-derived via join (§5 rule 1): if the
+  // founder later switches niche or edits the draft, this historical fact
+  // must not silently rewrite itself. Also keeps aggregation a flat
+  // GROUP BY and lets the pool be exported without dragging identifiable FKs.
+  niche       Niche
+  channel     Channel
+  contentType ContentType
+  tone        Tone
+
+  // Reported outcome counts. null = not reported/unknown, 0 = confirmed
+  // zero — the extraction step must never coerce a missing report into 0,
+  // that fabricates a "nothing happened" fact the founder never said.
+  audienceSizeSnapshot Int
+  views                Int? // people who SAW it — distinct from audienceSizeSnapshot (who it was sent to)
+  replyCount           Int?
+  signupCount          Int?
+  sentiment            Sentiment?
+
+  // Frozen distribution features — platform reach at post time, kept
+  // separate from the resonance counts above (README §5 rule 1: freeze the
+  // measurements, derive the metrics; this is a historical fact even if
+  // the post is later edited/deleted). We never read the algorithm
+  // directly — the founder reports these in freeform chat and the
+  // extraction step structures them. This is not live scraping; V1 stays
+  // hands-off accounts (§7).
+  //
+  // All nullable on purpose: these are public-feed concepts that don't
+  // apply to PREVIEW_EMAIL/DISCORD sends. null = not applicable — the
+  // extraction step must never invent a 0/false here for a non-feed
+  // channel.
+  postedAt              DateTime? // actual wide-channel post time; ≠ Send.sentAt
+  followerCountSnapshot Int? // reach denominator; frozen, never derived live
+  hasMedia              Boolean?
+  hasExternalLink       Boolean?
+  postFormat            PostFormat?
+  isPremiumAccount      Boolean?
+
+  // Do NOT add stored reachRatio / normalizedEngagementRate columns. Those
+  // are interpretations of the frozen counts above and must stay computed
+  // in queries/views, so refining the formula later can't silently blend
+  // incompatible historical definitions.
+
+  // First-hour engagement velocity is a deliberate V1 omission: the manual
+  // paste-in feedback loop can't reliably capture two time points. Add it
+  // once programmatic read access exists.
+
+  // Guilty until proven noise (§5 rule 4) — a single post never earns a lesson.
+  confidenceLow Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedbackReport FeedbackReport @relation(fields: [feedbackReportId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([niche, channel, contentType, tone])
+  // Pooling decision: distribution features pool across founders too
+  // (non-identifying, still gated by the live consent check at query
+  // time — §5 rule 2), so index them alongside the structural dimensions.
+  @@index([niche, channel, postFormat])
+}
+
+model AggregatedInsight {
+  id          String      @id @default(cuid())
+  niche       Niche
+  channel     Channel
+  contentType ContentType
+  tone        Tone
+
+  sampleSize    Int
+  positiveRate  Float?
+  avgReplyCount Float?
+  computedAt    DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([niche, channel, contentType, tone])
+}
