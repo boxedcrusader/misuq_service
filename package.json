@@ -32,7 +32,7 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "rootDir": "src",
+    "roots": ["<rootDir>/src", "<rootDir>/test"],
     "testRegex": ".*\\.spec\\.ts$",
     "maxWorkers": 1
   }
