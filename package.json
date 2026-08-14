@@ -9,7 +9,9 @@
     "test": "jest"
   },
   "dependencies": {
+    "@google/genai": "^2.16.0",
     "@nestjs/common": "^10",
+    "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^10",
     "@nestjs/mapped-types": "^2",
     "@nestjs/platform-express": "^10",
@@ -32,7 +34,10 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "roots": ["<rootDir>/src", "<rootDir>/test"],
+    "roots": [
+      "<rootDir>/src",
+      "<rootDir>/test"
+    ],
     "testRegex": ".*\\.spec\\.ts$",
     "maxWorkers": 1
   }

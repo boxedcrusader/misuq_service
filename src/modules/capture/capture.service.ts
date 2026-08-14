@@ -55,10 +55,22 @@ export class CaptureService {
       throw new NotFoundException(`Story ${storyId} not found`);
     }
 
+    // VoiceProfile is optional -- most founders won't have one yet (no
+    // profile-creation endpoint exists). findUnique returns null in that
+    // case rather than throwing, and that null flows straight through as
+    // `voice: null`, which GeminiDraftingProvider's buildPrompt treats as a
+    // real, expected branch (README §5: VoiceProfile is read only by this
+    // founder's own agent, never pooled).
+    const voiceProfile = await this.prisma.voiceProfile.findUnique({
+      where: { userId },
+      select: { styleSample: true },
+    });
+
     const draft = await this.draftingProvider.generateDraft({
       rawCapture: story.rawCapture,
       title: story.title ?? undefined,
       channel: Channel.EMAIL,
+      voice: voiceProfile,
     });
 
     // Draft creation and the Story's CAPTURED -> DRAFTED transition are

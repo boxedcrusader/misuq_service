@@ -289,6 +289,16 @@ model VoiceProfile {
   // pooled (§5).
   data Json
 
+  // Raw pasted writing sample(s) the founder wants their drafts to sound
+  // like. Own column, not folded into `data` — the drafting prompt reads
+  // this directly (capture.service.ts -> GeminiDraftingProvider) and needs
+  // a stable, typed field rather than reaching into an untyped Json bag.
+  // VOICE only: rhythm/vocabulary/personality. Never dictates post
+  // STRUCTURE (hook, shape) — that comes from the drafting prompt's own
+  // rules regardless of what this sample looks like. Never pooled, same as
+  // the rest of this model (§5).
+  styleSample String? @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -1,7 +1,22 @@
 import { NotFoundException } from "@nestjs/common";
+import { Channel, Tone } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CaptureService } from "./capture.service";
+import { DraftGenerationFailedException } from "./drafting/draft-generation-failed.exception";
+import { DraftingProvider } from "./drafting/drafting.provider";
 import { StubDraftingProvider } from "./drafting/stub-drafting.provider";
+
+// Stands in for GeminiDraftingProvider's real failure path (a rejected API
+// call, timeout, or malformed response all surface as this same exception —
+// see gemini-drafting.provider.ts). Real network/API mocking for THAT
+// mapping lives in gemini-drafting.provider.spec.ts; this fake only needs
+// to reject the same way, so draftStory's transaction-ordering guarantee
+// can be proven against a real Prisma database without any HTTP layer.
+class FailingDraftingProvider implements DraftingProvider {
+  async generateDraft(_input: { rawCapture: string; title?: string; channel: Channel }): Promise<{ body: string; tone: Tone }> {
+    throw new DraftGenerationFailedException();
+  }
+}
 
 // Plumbing proof for the Capture module's front two loop steps (README §2:
 // Capture -> Draft). Talks directly to CaptureService with a real
@@ -86,5 +101,25 @@ describe("CaptureService: capture -> draft happy path", () => {
 
     await expect(service.findOne(story.id, intruder.id)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service.draftStory(story.id, intruder.id)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("writes NOTHING when draft generation fails -- no ContentPiece, status stays CAPTURED", async () => {
+    // Proves the generate-before-transact ordering in draftStory (the
+    // generation call happens BEFORE the $transaction opens): a failure
+    // must leave the Story exactly as it was, never a stale status flip or
+    // a half-written ContentPiece. Uses a real Prisma database (like every
+    // other test in this file) with only the drafting provider swapped for
+    // one that always rejects -- this is the transaction-integrity
+    // guarantee that protects the DB regardless of WHY generation failed.
+    const failingService = new CaptureService(prisma, new FailingDraftingProvider());
+    const captured = await failingService.captureStory({ rawCapture: "Will fail to draft." }, userId);
+
+    await expect(failingService.draftStory(captured.id, userId)).rejects.toBeInstanceOf(
+      DraftGenerationFailedException,
+    );
+
+    const afterFailedDraft = await failingService.findOne(captured.id, userId);
+    expect(afterFailedDraft.status).toBe("CAPTURED");
+    expect(afterFailedDraft.contentPieces).toHaveLength(0);
   });
 });
