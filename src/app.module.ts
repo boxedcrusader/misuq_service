@@ -5,6 +5,7 @@ import { CaptureModule } from "./modules/capture/capture.module";
 import { GraduateModule } from "./modules/graduate/graduate.module";
 import { ReportBackModule } from "./modules/report-back/report-back.module";
 import { SendModule } from "./modules/send/send.module";
+import { VoiceModule } from "./modules/voice/voice.module";
 
 @Module({
   // isGlobal so every module can inject ConfigService without importing
@@ -17,6 +18,7 @@ import { SendModule } from "./modules/send/send.module";
     SendModule,
     ReportBackModule,
     GraduateModule,
+    VoiceModule,
   ],
 })
 export class AppModule {}
