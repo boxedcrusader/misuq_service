@@ -117,4 +117,75 @@ describe("GeminiDraftingProvider", () => {
       expect(result.tone).toBe(Tone.OTHER);
     });
   });
+
+  // Proves buildPrompt's voice/structure split (the M1-critical wiring):
+  // a founder WITH a styleSample gets it injected as a register reference,
+  // a founder with none still gets a clean, no-crash fallback prompt.
+  // buildPrompt is private, so these inspect the `contents` string actually
+  // sent to the (mocked) Gemini call rather than calling it directly.
+  describe("voice wiring in buildPrompt", () => {
+    beforeEach(() => {
+      mockGenerateContent.mockResolvedValue({
+        text: JSON.stringify({ body: "Hey folks, shipped dark mode today!", tone: "confident" }),
+      });
+    });
+
+    it("injects the founder's styleSample as a VOICE REFERENCE block when present", async () => {
+      const provider = new GeminiDraftingProvider(fakeConfigService());
+      const styleSample = "I ship fast and talk plainly about it, no fluff, just what happened.";
+
+      await provider.generateDraft({
+        rawCapture: "Shipped dark mode.",
+        channel: Channel.EMAIL,
+        voice: { styleSample },
+      });
+
+      const prompt = mockGenerateContent.mock.calls[0][0].contents as string;
+      expect(prompt).toContain("VOICE REFERENCE");
+      expect(prompt).toContain(styleSample);
+      expect(prompt).not.toContain("No voice samples for this founder yet");
+    });
+
+    it("falls back to a natural, AI-tell-free voice instruction when no styleSample exists", async () => {
+      const provider = new GeminiDraftingProvider(fakeConfigService());
+
+      await provider.generateDraft({
+        rawCapture: "Shipped dark mode.",
+        channel: Channel.EMAIL,
+        voice: null,
+      });
+
+      const prompt = mockGenerateContent.mock.calls[0][0].contents as string;
+      expect(prompt).toContain("No voice samples for this founder yet");
+      expect(prompt).not.toContain("VOICE REFERENCE");
+    });
+
+    it("treats a VoiceProfile with an empty/whitespace styleSample the same as no voice at all", async () => {
+      const provider = new GeminiDraftingProvider(fakeConfigService());
+
+      await provider.generateDraft({
+        rawCapture: "Shipped dark mode.",
+        channel: Channel.EMAIL,
+        voice: { styleSample: "   " },
+      });
+
+      const prompt = mockGenerateContent.mock.calls[0][0].contents as string;
+      expect(prompt).toContain("No voice samples for this founder yet");
+      expect(prompt).not.toContain("VOICE REFERENCE");
+    });
+
+    it("keeps structure rules present regardless of voice branch (voice and structure stay separate)", async () => {
+      const provider = new GeminiDraftingProvider(fakeConfigService());
+
+      await provider.generateDraft({
+        rawCapture: "Shipped dark mode.",
+        channel: Channel.EMAIL,
+        voice: { styleSample: "Some real founder voice sample text here." },
+      });
+
+      const prompt = mockGenerateContent.mock.calls[0][0].contents as string;
+      expect(prompt).toContain("STRUCTURE — this comes from you, NOT from the voice samples");
+      expect(prompt).toContain("Open with a hook that earns the first line");
+    });
+  });
 });
