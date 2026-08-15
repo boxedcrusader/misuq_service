@@ -199,7 +199,10 @@ describe("Moat E2E: full capture->draft->stage->report chain feeds the real aggr
 
     const optedOutResult = await runFullChain(OPTED_OUT_SEED, optedOutUserId, optedOutAudience.id);
     signalRecordsByLabel.set(OPTED_OUT_SEED.label, { id: optedOutResult.report.signalRecord.id });
-  });
+  }, 30000); // 9 stories x real capture->draft->stage->report chain is 36+ sequential DB
+  // round trips; comfortably under 10s alone but was already borderline against
+  // Jest's 5000ms default hook timeout in a full `jest` run (later in the run
+  // order = system less warm), independent of this task's changes.
 
   afterAll(async () => {
     await prisma.$disconnect();

@@ -42,7 +42,14 @@ describe("SendService: stage (DRAFTED -> STAGED) happy path and guards", () => {
       data: { userId, rawCapture: "Shipped a thing.", contentType: ContentType.OTHER, status: StoryStatus.DRAFTED },
     });
     const contentPiece = await prisma.contentPiece.create({
-      data: { storyId: story.id, channel: Channel.EMAIL, stage: Stage.PREVIEW, tone: Tone.OTHER, body: "stub body" },
+      data: {
+        storyId: story.id,
+        channel: Channel.EMAIL,
+        stage: Stage.PREVIEW,
+        tone: Tone.OTHER,
+        body: "stub body",
+        generatedBody: "stub body",
+      },
     });
     return { story, contentPiece };
   }

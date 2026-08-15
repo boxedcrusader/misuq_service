@@ -186,8 +186,16 @@ model ContentPiece {
   channel Channel
   stage   Stage
   tone    Tone
-  body    String
-  status  ContentPieceStatus @default(DRAFTED)
+
+  // Immutable snapshot of the drafting provider's raw output, set ONCE at
+  // draft generation and never written again. `body` is the mutable
+  // "current / shipped" text — send-as-is is DERIVABLE as `body ===
+  // generatedBody`, so no separate boolean/rollup is stored for it (see the
+  // edit endpoint in content-pieces.service.ts). Both columns are set to the
+  // same value at draft time; only `body` moves after that.
+  generatedBody String
+  body          String
+  status        ContentPieceStatus @default(DRAFTED)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

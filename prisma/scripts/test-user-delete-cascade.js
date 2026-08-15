@@ -69,6 +69,7 @@ async function seed() {
       stage: "PREVIEW",
       tone: "CONFIDENT",
       body: "Hey folks, just shipped a new onboarding flow...",
+      generatedBody: "Hey folks, just shipped a new onboarding flow...",
     },
   });
 

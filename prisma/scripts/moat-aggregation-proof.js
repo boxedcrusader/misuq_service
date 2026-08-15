@@ -79,7 +79,7 @@ async function seedChain({ user, contentType, channel, tone, views, replyCount }
     data: { userId: user.id, rawCapture: "seed", contentType },
   });
   const contentPiece = await prisma.contentPiece.create({
-    data: { storyId: story.id, channel, stage: "WIDE", tone, body: "seed" },
+    data: { storyId: story.id, channel, stage: "WIDE", tone, body: "seed", generatedBody: "seed" },
   });
   const audience = await prisma.audience.create({
     data: { userId: user.id, name: "seed audience", type: "PEERS" },

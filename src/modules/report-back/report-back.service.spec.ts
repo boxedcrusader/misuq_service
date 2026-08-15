@@ -72,6 +72,7 @@ describe("ReportBackService: report (STAGED -> REPORTED) and the poolable-layer 
         stage: Stage.PREVIEW,
         tone: opts?.tone ?? Tone.OTHER,
         body: "stub body",
+        generatedBody: "stub body",
         status: ContentPieceStatus.SENT,
       },
     });
@@ -218,7 +219,14 @@ describe("ReportBackService: report (STAGED -> REPORTED) and the poolable-layer 
       data: { userId, rawCapture: "Never sent.", contentType: ContentType.OTHER, status: StoryStatus.DRAFTED },
     });
     const contentPiece = await prisma.contentPiece.create({
-      data: { storyId: story.id, channel: Channel.EMAIL, stage: Stage.PREVIEW, tone: Tone.OTHER, body: "stub body" },
+      data: {
+        storyId: story.id,
+        channel: Channel.EMAIL,
+        stage: Stage.PREVIEW,
+        tone: Tone.OTHER,
+        body: "stub body",
+        generatedBody: "stub body",
+      },
     });
     const audience = await prisma.audience.create({
       data: { userId, name: "Beta list", type: AudienceType.EMAIL_LIST, size: 10 },

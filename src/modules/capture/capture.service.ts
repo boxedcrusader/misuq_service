@@ -90,6 +90,10 @@ export class CaptureService {
           stage: Stage.PREVIEW,
           tone: draft.tone,
           body: draft.body,
+          // Immutable snapshot, set once, same value as body at this
+          // instant only — never written again after this row is created
+          // (see content-pieces.service.ts's edit endpoint).
+          generatedBody: draft.body,
           status: ContentPieceStatus.DRAFTED,
         },
       }),

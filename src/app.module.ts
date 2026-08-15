@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "./prisma/prisma.module";
 import { CaptureModule } from "./modules/capture/capture.module";
+import { ContentPiecesModule } from "./modules/content-pieces/content-pieces.module";
 import { GraduateModule } from "./modules/graduate/graduate.module";
 import { ReportBackModule } from "./modules/report-back/report-back.module";
 import { SendModule } from "./modules/send/send.module";
@@ -15,6 +16,7 @@ import { VoiceModule } from "./modules/voice/voice.module";
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     CaptureModule,
+    ContentPiecesModule,
     SendModule,
     ReportBackModule,
     GraduateModule,
