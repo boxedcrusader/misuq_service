@@ -30,6 +30,10 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # Switching drafting/extraction to Claude (code is ready, off by
+      # default): in the Render dashboard add ANTHROPIC_API_KEY, then set
+      # DRAFTING_LLM=claude and EXTRACTION_LLM=claude. Kept out of this file
+      # on purpose: selecting claude without a key stops the server at boot.
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET

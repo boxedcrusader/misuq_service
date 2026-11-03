@@ -9,6 +9,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.135.0",
     "@google/genai": "^2.16.0",
     "@nestjs/common": "^10",
     "@nestjs/config": "^4.0.4",

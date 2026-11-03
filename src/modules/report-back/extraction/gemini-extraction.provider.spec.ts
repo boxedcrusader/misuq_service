@@ -19,7 +19,8 @@ jest.mock("@google/genai", () => {
   };
 });
 
-import { GeminiExtractionProvider, isGrounded } from "./gemini-extraction.provider";
+import { GeminiExtractionProvider } from "./gemini-extraction.provider";
+import { isGrounded } from "./extraction-core";
 
 function provider() {
   const config = { getOrThrow: jest.fn().mockReturnValue("test-fake-api-key") } as unknown as ConfigService;
