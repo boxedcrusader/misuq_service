@@ -16,6 +16,9 @@ export interface GenerateDraftInput {
   // null/empty styleSample, is a real and expected case (not an error) —
   // see the no-voice branch in buildPrompt.
   voice?: VoiceContext | null;
+  // For the sign-off only. Null/absent is normal (User.name is optional) and
+  // means "sign off without a name" — never "invent one".
+  founderName?: string | null;
 }
 
 export interface DraftingProvider {

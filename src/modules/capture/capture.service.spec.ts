@@ -3,7 +3,7 @@ import { Channel, Tone } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CaptureService } from "./capture.service";
 import { DraftGenerationFailedException } from "./drafting/draft-generation-failed.exception";
-import { DraftingProvider } from "./drafting/drafting.provider";
+import { DraftingProvider, GenerateDraftInput } from "./drafting/drafting.provider";
 import { StubDraftingProvider } from "./drafting/stub-drafting.provider";
 
 // Stands in for GeminiDraftingProvider's real failure path (a rejected API
@@ -101,6 +101,27 @@ describe("CaptureService: capture -> draft happy path", () => {
 
     await expect(service.findOne(story.id, intruder.id)).rejects.toBeInstanceOf(NotFoundException);
     await expect(service.draftStory(story.id, intruder.id)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("passes the founder's name to the drafting provider for the sign-off (null when unset)", async () => {
+    const seen: GenerateDraftInput[] = [];
+    const recording: DraftingProvider = {
+      generateDraft: async (input) => {
+        seen.push(input);
+        return { body: "draft", tone: Tone.CASUAL };
+      },
+    };
+    const named = await prisma.user.create({
+      data: { email: "named-founder@misuq.test", passwordHash: "not-a-real-hash", name: "Ada" },
+    });
+    const recordingService = new CaptureService(prisma, recording);
+
+    const namedStory = await recordingService.captureStory({ rawCapture: "Shipped it." }, named.id);
+    await recordingService.draftStory(namedStory.id, named.id);
+    const unnamedStory = await recordingService.captureStory({ rawCapture: "Shipped it." }, userId);
+    await recordingService.draftStory(unnamedStory.id, userId);
+
+    expect(seen.map((i) => i.founderName)).toEqual(["Ada", null]);
   });
 
   it("writes NOTHING when draft generation fails -- no ContentPiece, status stays CAPTURED", async () => {

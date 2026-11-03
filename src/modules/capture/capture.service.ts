@@ -50,7 +50,12 @@ export class CaptureService {
   }
 
   async draftStory(storyId: string, userId: string) {
-    const story = await this.prisma.story.findUnique({ where: { id: storyId } });
+    const story = await this.prisma.story.findUnique({
+      where: { id: storyId },
+      // The founder's name, so the draft can sign off as them instead of the
+      // model inventing one ("Best, Alex" — seen live, 2026-11-03).
+      include: { user: { select: { name: true } } },
+    });
     if (!story || story.userId !== userId) {
       throw new NotFoundException(`Story ${storyId} not found`);
     }
@@ -71,6 +76,7 @@ export class CaptureService {
       title: story.title ?? undefined,
       channel: Channel.EMAIL,
       voice: voiceProfile,
+      founderName: story.user.name,
     });
 
     // Draft creation and the Story's CAPTURED -> DRAFTED transition are

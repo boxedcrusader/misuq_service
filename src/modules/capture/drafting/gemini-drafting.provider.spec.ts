@@ -204,4 +204,101 @@ describe("GeminiDraftingProvider", () => {
       expect(prompt).toContain("Open with a hook that earns the first line");
     });
   });
+  // The FACTS rule + invented-number backstop (2026-11-03). Live baseline
+  // before the fix: 7/10 drafts contained made-up numbers, 4/10 signed off
+  // as an invented "Alex".
+  describe("never inventing facts", () => {
+    const draft = (body: string) => ({ text: JSON.stringify({ body, tone: "CASUAL" }) });
+
+    it("puts a FACTS rule first that overrides structure, and stops voice samples leaking facts", async () => {
+      mockGenerateContent.mockResolvedValue(draft("Hey all, shipped dark mode."));
+      await new GeminiDraftingProvider(fakeConfigService()).generateDraft({
+        rawCapture: "Shipped dark mode.",
+        channel: Channel.EMAIL,
+        voice: { styleSample: "We hit 10k users last month and I wrote about it." },
+      });
+      const prompt = mockGenerateContent.mock.calls[0][0].contents as string;
+      expect(prompt).toContain("FACTS — the most important rule; it overrides every rule below");
+      expect(prompt.indexOf("FACTS —")).toBeLessThan(prompt.indexOf("STRUCTURE —"));
+      expect(prompt).toContain("never");
+      expect(prompt).toContain("NEVER their");
+      // The old padding pressure is gone.
+      expect(prompt).not.toContain("100-200 words");
+      expect(prompt).toContain("Never pad");
+    });
+
+    it("signs off as the founder when their name is known", async () => {
+      mockGenerateContent.mockResolvedValue(draft("Hey all, shipped dark mode."));
+      await new GeminiDraftingProvider(fakeConfigService()).generateDraft({
+        rawCapture: "Shipped dark mode.",
+        channel: Channel.EMAIL,
+        founderName: 'Ada "the dev"\nLovelace',
+      });
+      const prompt = mockGenerateContent.mock.calls[0][0].contents as string;
+      // Quotes/newlines stripped so the name can't break out of its quotes.
+      expect(prompt).toContain('sign-off as "Ada  the dev  Lovelace"');
+    });
+
+    it("forbids inventing a name when none is known", async () => {
+      mockGenerateContent.mockResolvedValue(draft("Hey all, shipped dark mode."));
+      await new GeminiDraftingProvider(fakeConfigService()).generateDraft({
+        rawCapture: "Shipped dark mode.",
+        channel: Channel.EMAIL,
+        founderName: null,
+      });
+      const prompt = mockGenerateContent.mock.calls[0][0].contents as string;
+      expect(prompt).toContain("no sign-off line at all");
+      expect(prompt).toContain("must never invent one");
+    });
+
+    it("accepts a draft whose numbers all come from the founder's words — one call", async () => {
+      mockGenerateContent.mockResolvedValue(draft("Hey all — 300 signups in 24 hours after finishing #4."));
+      const result = await new GeminiDraftingProvider(fakeConfigService()).generateDraft({
+        rawCapture: "Launched on Product Hunt, finished #4 of the day. 300 signups in 24 hours.",
+        channel: Channel.EMAIL,
+      });
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(result.body).toContain("300 signups");
+    });
+
+    it("grounds numbers from the title too", async () => {
+      mockGenerateContent.mockResolvedValue(draft("Hey all — v2 is out."));
+      await new GeminiDraftingProvider(fakeConfigService()).generateDraft({
+        rawCapture: "Shipped it.",
+        title: "v2 launch",
+        channel: Channel.EMAIL,
+      });
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries once with a correction naming the invented numbers, and returns the clean redraft", async () => {
+      mockGenerateContent
+        .mockResolvedValueOnce(draft("Hey all — spent five days on a leak, three people hit it."))
+        .mockResolvedValueOnce(draft("Hey all — quiet week, mostly bugs and support."));
+      const result = await new GeminiDraftingProvider(fakeConfigService()).generateDraft({
+        rawCapture: "Quiet week. Mostly fixed bugs and answered support emails.",
+        channel: Channel.EMAIL,
+      });
+
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+      const retryPrompt = mockGenerateContent.mock.calls[1][0].contents as string;
+      expect(retryPrompt).toContain("YOUR PREVIOUS DRAFT BROKE THE FACTS RULE");
+      expect(retryPrompt).toContain('"five"');
+      expect(retryPrompt).toContain('"three"');
+      expect(result.body).toBe("Hey all — quiet week, mostly bugs and support.");
+    });
+
+    it("fails cleanly (no draft) if the redraft still invents numbers", async () => {
+      mockGenerateContent
+        .mockResolvedValueOnce(draft("Spent five days on it."))
+        .mockResolvedValueOnce(draft("Spent six days on it."));
+      await expect(
+        new GeminiDraftingProvider(fakeConfigService()).generateDraft({
+          rawCapture: "Quiet week. Mostly fixed bugs.",
+          channel: Channel.EMAIL,
+        }),
+      ).rejects.toBeInstanceOf(DraftGenerationFailedException);
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    });
+  });
 });
