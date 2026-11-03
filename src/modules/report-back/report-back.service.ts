@@ -40,8 +40,17 @@ interface SignalSnapshot {
   niche: Niche;
   channel: Channel;
   contentType: ContentType;
-  tone: Tone;
+  tone: Tone | null;
   audienceSizeSnapshot: number;
+}
+
+// ContentPiece.tone OTHER means "the drafting step couldn't classify the
+// angle" — honest on content, a synthesized grouping key if pooled
+// (CLAUDE.md §5). The moat gets the honest unknown instead. Unlike niche,
+// this can't fail closed: the founder has no way to fix an LLM's
+// classification, and the rest of the signal is still real.
+function poolableTone(tone: Tone): Tone | null {
+  return tone === Tone.OTHER ? null : tone;
 }
 
 @Injectable()
@@ -117,7 +126,7 @@ export class ReportBackService {
       niche: story.user.niche,
       channel: send.contentPiece.channel,
       contentType: story.contentType,
-      tone: send.contentPiece.tone,
+      tone: poolableTone(send.contentPiece.tone),
       audienceSizeSnapshot: send.audienceSizeSnapshot,
     };
 
@@ -184,7 +193,7 @@ export class ReportBackService {
       niche: story.user.niche,
       channel: report.send.contentPiece.channel,
       contentType: story.contentType,
-      tone: report.send.contentPiece.tone,
+      tone: poolableTone(report.send.contentPiece.tone),
       audienceSizeSnapshot: report.send.audienceSizeSnapshot,
     });
 

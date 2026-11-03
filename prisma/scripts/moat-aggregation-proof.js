@@ -54,6 +54,8 @@ const MOAT_AGGREGATION_QUERY = `
     AND u."aggregateLearningConsent" = true
     AND sr.views IS NOT NULL
     AND sr."replyCount" IS NOT NULL
+    -- tone is nullable (unclassified angle) -- never a GROUP BY bucket
+    AND sr.tone IS NOT NULL
   GROUP BY sr."contentType", sr.tone
   HAVING COUNT(*) >= 20
   ORDER BY resonance_rate DESC;
@@ -82,7 +84,8 @@ async function seedChain({ user, contentType, channel, tone, views, replyCount }
     data: { storyId: story.id, channel, stage: "WIDE", tone, body: "seed", generatedBody: "seed" },
   });
   const audience = await prisma.audience.create({
-    data: { userId: user.id, name: "seed audience", type: "PEERS" },
+    // size matches the frozen audienceSizeSnapshot below (Audience.size is required).
+    data: { userId: user.id, name: "seed audience", type: "PEERS", size: 1000 },
   });
   const send = await prisma.send.create({
     data: { contentPieceId: contentPiece.id, audienceId: audience.id, audienceSizeSnapshot: 1000 },

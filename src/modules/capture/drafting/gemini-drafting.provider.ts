@@ -4,7 +4,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Tone } from "@prisma/client";
 import { DraftingProvider, GenerateDraftInput } from "./drafting.provider";
 import { DraftGenerationFailedException } from "./draft-generation-failed.exception";
-import { mapToneToEnum } from "./tone-mapping";
+import { DRAFT_TONES, TONE_DEFINITIONS, parseDraftTone } from "./tone-mapping";
 
 // Model alias, not a dated snapshot (e.g. "gemini-2.5-flash-lite") —
 // resolves to whatever Google currently serves as its default Flash-Lite
@@ -28,12 +28,12 @@ const RESPONSE_SCHEMA = {
       type: Type.STRING,
       description: "The full preview email body, including a greeting and sign-off.",
     },
-    // Deliberately free text, NOT constrained to the Tone enum's values —
-    // see tone-mapping.ts for why forcing the model onto the enum here
-    // would just relocate the guessing problem instead of solving it.
+    // Constrained to the real Tone angles (never OTHER) — see
+    // tone-mapping.ts for why the old free-text "voice" label failed.
     tone: {
       type: Type.STRING,
-      description: "One or two words describing the emotional tone of the draft (e.g. 'warm', 'confident and proud').",
+      enum: DRAFT_TONES,
+      description: "The post's emotional angle: the single best fit from the defined list.",
     },
   },
   required: ["body", "tone"],
@@ -113,7 +113,9 @@ export class GeminiDraftingProvider implements DraftingProvider {
 
     return {
       body: parsed.body.trim(),
-      tone: mapToneToEnum(typeof parsed.tone === "string" ? parsed.tone : undefined),
+      // Off-schema → OTHER ("uncategorized" on content; never pooled as
+      // OTHER — see parseDraftTone). Logged, since it should be rare now.
+      tone: this.readTone(parsed.tone),
     };
   }
 
@@ -176,8 +178,19 @@ export class GeminiDraftingProvider implements DraftingProvider {
       rawCapture,
       `"""`,
       "",
+      `ANGLE — after writing, label the post's emotional angle: the stance it takes toward its story.`,
+      `This is about what the post DOES, not how it sounds — every post is written in the founder's voice,`,
+      `so "understated" or "plain" are never answers. Pick the single best fit:`,
+      ...DRAFT_TONES.map((tone) => `- ${tone}: ${TONE_DEFINITIONS[tone]}`),
+      "",
       `Return JSON only: { "body": string, "tone": string }.`,
-      `"body" is the finished post. "tone" is a short free-text label for the voice you wrote in.`,
+      `"body" is the finished post. "tone" is exactly one of the angle names above.`,
     ].join("\n");
+  }
+
+  private readTone(raw: unknown): Tone {
+    const tone = parseDraftTone(raw);
+    if (tone === Tone.OTHER) this.logger.warn("Gemini returned an off-schema tone; stored as OTHER (never pooled)");
+    return tone;
   }
 }

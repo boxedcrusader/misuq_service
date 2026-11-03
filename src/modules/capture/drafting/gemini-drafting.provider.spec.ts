@@ -93,10 +93,10 @@ describe("GeminiDraftingProvider", () => {
     });
   });
 
-  describe("well-formed response parsing + tone mapping", () => {
-    it("returns the trimmed body and maps a confident free-text tone to its enum", async () => {
+  describe("well-formed response parsing + tone (the post's angle)", () => {
+    it("returns the trimmed body and the schema-constrained angle", async () => {
       mockGenerateContent.mockResolvedValue({
-        text: JSON.stringify({ body: "  Hey folks, shipped dark mode today!  ", tone: "excited and proud" }),
+        text: JSON.stringify({ body: "  Hey folks, shipped dark mode today!  ", tone: "CELEBRATORY" }),
       });
       const provider = new GeminiDraftingProvider(fakeConfigService());
 
@@ -106,15 +106,31 @@ describe("GeminiDraftingProvider", () => {
       expect(result.tone).toBe(Tone.CELEBRATORY);
     });
 
-    it("falls back tone to OTHER when Gemini's free text doesn't confidently match an enum", async () => {
+    it("falls back to OTHER (uncategorized) if Gemini goes off-schema with free text", async () => {
       mockGenerateContent.mockResolvedValue({
-        text: JSON.stringify({ body: "Hey folks, shipped dark mode today!", tone: "upbeat and snappy" }),
+        text: JSON.stringify({ body: "Hey folks, shipped dark mode today!", tone: "understated and practical" }),
       });
       const provider = new GeminiDraftingProvider(fakeConfigService());
 
       const result = await provider.generateDraft({ rawCapture: "Shipped dark mode.", channel: Channel.EMAIL });
 
       expect(result.tone).toBe(Tone.OTHER);
+    });
+
+    it("constrains tone to the real angles via the schema, and defines each one in the prompt", async () => {
+      mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ body: "Hey folks.", tone: "REFLECTIVE" }) });
+      const provider = new GeminiDraftingProvider(fakeConfigService());
+
+      await provider.generateDraft({ rawCapture: "Shipped dark mode.", channel: Channel.EMAIL });
+
+      const call = mockGenerateContent.mock.calls[0][0];
+      const schemaEnum: string[] = call.config.responseSchema.properties.tone.enum;
+      expect(schemaEnum).not.toContain("OTHER");
+      expect(schemaEnum).toHaveLength(Object.values(Tone).length - 1);
+      for (const angle of schemaEnum) expect(call.contents).toContain(`- ${angle}: `);
+      // The old failure mode: asking about VOICE, which the prompt already fixes.
+      expect(call.contents).toContain("not how it sounds");
+      expect(call.contents).not.toContain("label for the voice you wrote in");
     });
   });
 
@@ -126,7 +142,7 @@ describe("GeminiDraftingProvider", () => {
   describe("voice wiring in buildPrompt", () => {
     beforeEach(() => {
       mockGenerateContent.mockResolvedValue({
-        text: JSON.stringify({ body: "Hey folks, shipped dark mode today!", tone: "confident" }),
+        text: JSON.stringify({ body: "Hey folks, shipped dark mode today!", tone: "CONFIDENT" }),
       });
     });
 

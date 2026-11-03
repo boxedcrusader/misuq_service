@@ -160,6 +160,31 @@ describe("ReportBackService: report (STAGED -> REPORTED) and the poolable-layer 
     expect(signal.audienceSizeSnapshot).toBe(250);
   });
 
+  it("pools an unclassified angle (ContentPiece.tone OTHER) as tone null, never as OTHER", async () => {
+    const { contentPiece, send } = await createStagedSend(userId, { tone: Tone.OTHER });
+
+    const result = await service.reportBack({ sendId: send.id, rawFeedback: "4 replies" }, userId);
+
+    expect(result.signalRecord!.tone).toBeNull();
+    // The content keeps its honest "uncategorized" label — only the moat
+    // copy changes.
+    expect((await prisma.contentPiece.findUniqueOrThrow({ where: { id: contentPiece.id } })).tone).toBe(Tone.OTHER);
+    expect(await prisma.signalRecord.count({ where: { tone: Tone.OTHER } })).toBe(0);
+  });
+
+  it("retryExtraction applies the same rule: OTHER is pooled as null", async () => {
+    const { send } = await createStagedSend(userId, { tone: Tone.OTHER });
+    const failing: ExtractionProvider = {
+      extract: async () => {
+        throw new SignalExtractionFailedException();
+      },
+    };
+    const report = await new ReportBackService(prisma, failing).reportBack({ sendId: send.id, rawFeedback: "x" }, userId);
+
+    const retried = await service.retryExtraction(report.id, userId);
+    expect(retried.signalRecord.tone).toBeNull();
+  });
+
   it("creates a SignalRecord even when the user has NOT opted into aggregate learning", async () => {
     const optedOutUser = await prisma.user.create({
       data: {

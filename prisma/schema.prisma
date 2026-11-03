@@ -336,7 +336,13 @@ model SignalRecord {
   niche       Niche
   channel     Channel
   contentType ContentType
-  tone        Tone
+  // Nullable on purpose (2026-11-03), unlike its siblings: null = the post's
+  // angle was never honestly classified (ContentPiece.tone was OTHER).
+  // report-back writes null rather than pooling OTHER-as-fallback — the
+  // "NEVER synthesize a poolable dimension" rule (CLAUDE.md §5) — and it
+  // can't fail closed like niche does, since a founder can't fix an LLM's
+  // classification. Tone-grouped aggregation must filter tone IS NOT NULL.
+  tone        Tone?
 
   // Reported outcome counts. null = not reported/unknown, 0 = confirmed
   // zero — the extraction step must never coerce a missing report into 0,

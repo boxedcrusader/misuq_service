@@ -1,46 +1,43 @@
 import { Tone } from "@prisma/client";
 
-// Gemini is prompted for a short free-text tone description ("warm",
-// "excited and proud", "matter-of-fact"), not a Tone enum value directly —
-// deliberately NOT constrained via the response schema's `enum` field,
-// because forcing the model to pick from the enum would just move the same
-// guessing problem onto Gemini instead of solving it, and there would be
-// nothing left here to test. This is the null-vs-zero-shaped trap from
-// CLAUDE.md/architecture-principles.md applied to content tone (not a moat
-// dimension — Tone.OTHER here is an honest "uncategorized", legitimate to
-// fall back to, unlike SignalRecord's moat dimensions where a fallback
-// would pool a guess incorrectly forever).
+// Tone = the post's emotional ANGLE — the stance it takes toward its story
+// (admits a struggle, celebrates a win, teaches something...). It is a moat
+// grouping key once snapshotted into SignalRecord (README §3: "vulnerability-
+// toned posts beat feature announcements 3:1"), so it must describe what the
+// post DOES, not how it sounds.
 //
-// Matching is keyword-based and CONFIDENT-only: a normalized tone string
-// maps to an enum value only if it contains one of that enum's known
-// synonyms. Multiple enums matching, or none matching, both fall back to
-// OTHER rather than guessing which one "wins" — a wrong enum value is worse
-// than an honest "uncategorized" one.
-const TONE_KEYWORDS: Record<Exclude<Tone, "OTHER">, string[]> = {
-  VULNERABLE: ["vulnerable", "honest", "raw", "personal", "candid"],
-  CONFIDENT: ["confident", "assured", "bold", "assertive"],
-  EDUCATIONAL: ["educational", "informative", "instructive", "teaching", "explanatory"],
-  CASUAL: ["casual", "relaxed", "informal", "conversational", "chatty"],
-  PROFESSIONAL: ["professional", "formal", "business-like", "polished"],
-  HUMBLE: ["humble", "modest", "grateful", "thankful", "appreciative"],
-  CELEBRATORY: ["celebratory", "celebrating", "excited", "joyful", "proud", "triumphant"],
-  REFLECTIVE: ["reflective", "thoughtful", "introspective", "contemplative", "reflection"],
+// History (2026-11-03): Gemini used to return a free-text label for "the
+// voice you wrote in", keyword-matched onto the enum here. Measured live, 6 of
+// 8 real drafts fell to OTHER and the 2 that didn't were wrong: the drafting
+// prompt itself demands an "understated builder's voice", so the label was
+// nearly always "understated"/"plain" (which matches no keyword), and "honest"
+// mapped a 100-customer milestone to VULNERABLE. Voice and angle are
+// different axes; asking about one can't answer the other.
+//
+// Now Gemini picks the angle directly from these definitions, constrained by
+// the response schema's enum — a judgment by the post's own author against
+// written criteria, not a keyword guess. The definitions are the single
+// source for both the prompt and the schema.
+export const TONE_DEFINITIONS: Record<Exclude<Tone, "OTHER">, string> = {
+  VULNERABLE: "openly admits a struggle, mistake, loss, or doubt",
+  CONFIDENT: "states a result or decision with conviction, no hedging",
+  EDUCATIONAL: "teaches something others can reuse — a how-to, technique, or numbers",
+  CASUAL: "a light, low-stakes, offhand update",
+  PROFESSIONAL: "a formal, businesslike announcement",
+  HUMBLE: "credits others or expresses gratitude, downplays the founder's own role",
+  CELEBRATORY: "marks a win or milestone with visible excitement",
+  REFLECTIVE: "steps back to draw a lesson or meaning from what happened",
 };
 
-export function mapToneToEnum(rawTone: string | null | undefined): Tone {
-  if (!rawTone || typeof rawTone !== "string") {
-    return Tone.OTHER;
-  }
-  const normalized = rawTone.trim().toLowerCase();
-  if (normalized.length === 0) {
-    return Tone.OTHER;
-  }
+export const DRAFT_TONES = Object.keys(TONE_DEFINITIONS) as Exclude<Tone, "OTHER">[];
 
-  const matches = (Object.keys(TONE_KEYWORDS) as Exclude<Tone, "OTHER">[]).filter((tone) =>
-    TONE_KEYWORDS[tone].some((keyword) => normalized.includes(keyword)),
-  );
-
-  // Exactly one confident match wins; zero or multiple (ambiguous) fall
-  // back to OTHER rather than picking arbitrarily.
-  return matches.length === 1 ? matches[0] : Tone.OTHER;
+// Accepts only an exact angle name (case/whitespace-tolerant). Anything else
+// — missing, free text, or OTHER itself — is Tone.OTHER: on a ContentPiece
+// that is an honest "uncategorized". It is NEVER pooled as-is:
+// report-back.service.ts writes SignalRecord.tone = null for it, because on a
+// moat dimension OTHER-as-fallback would group a guess forever (CLAUDE.md §5).
+export function parseDraftTone(raw: unknown): Tone {
+  if (typeof raw !== "string") return Tone.OTHER;
+  const candidate = raw.trim().toUpperCase();
+  return (DRAFT_TONES as string[]).includes(candidate) ? (candidate as Tone) : Tone.OTHER;
 }
