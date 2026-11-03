@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Public } from "../../common/decorators/public.decorator";
 import { AuthService } from "./auth.service";
@@ -11,14 +12,20 @@ import { UpdateMeDto } from "./dto/update-me.dto";
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Per IP. Loose enough for a team signing up from one office NAT (Studie AI
+  // is 6 people); tight enough to stop scripted account farms.
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60 * 60_000 } })
   @Post("register")
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   // 200, not Nest's POST default 201: login creates no addressable resource.
+  // Per IP: slows password guessing to 10/min, and bounds scrypt CPU spent
+  // on failed attempts (~220ms each).
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("login")
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
@@ -28,6 +35,7 @@ export class AuthController {
   // Public because the caller's ACCESS token is typically already expired
   // here -- the refresh token in the body is the credential.
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
   refresh(@Body() dto: RefreshDto) {

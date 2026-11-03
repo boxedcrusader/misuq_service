@@ -1,0 +1,13 @@
+{
+  // Production build: app code only. tsconfig.json also includes test/ (for
+  // type-checking and ts-jest), which made tsc's inferred root the project
+  // root and emitted dist/src/main.js, while `npm start` runs dist/main.js.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "incremental": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts"]
+}

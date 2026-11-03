@@ -8,6 +8,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Channel, ContentType, Niche, Prisma, SignalRecord, StoryStatus, Tone } from "@prisma/client";
+import { assertUnderDailyLimit, usageWindowStart } from "../../common/usage-limits";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateReportDto } from "./dto/create-report.dto";
 import { EXTRACTION_PROVIDER, ExtractedSignal, ExtractionProvider } from "./extraction/extraction.provider";
@@ -118,6 +119,13 @@ export class ReportBackService {
     if (existingReport) {
       throw new ConflictException(`Send ${dto.sendId} has already been reported on`);
     }
+
+    // Per-account daily cap on Gemini-backed extraction (common/usage-limits.ts),
+    // checked before anything is written.
+    const reportsInWindow = await this.prisma.feedbackReport.count({
+      where: { send: { contentPiece: { story: { userId } } }, createdAt: { gte: usageWindowStart() } },
+    });
+    assertUnderDailyLimit("report", reportsInWindow);
 
     // Snapshotted NOW, at report time, from the rows read above — not
     // re-read when the signal is written a moment later.

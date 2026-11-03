@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { parsePagination } from "../../common/http/pagination";
 import { CreateSendDto } from "./dto/create-send.dto";
 import { SendService } from "./send.service";
 
@@ -14,10 +15,7 @@ export class SendController {
 
   @Get()
   findAll(@CurrentUser() userId: string, @Query("page") page?: string, @Query("limit") limit?: string) {
-    return this.sendService.findAll(userId, {
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
-    });
+    return this.sendService.findAll(userId, parsePagination(page, limit));
   }
 
   @Get(":id")

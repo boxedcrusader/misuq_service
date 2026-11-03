@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { parsePagination } from "../../common/http/pagination";
 import { AudiencesService } from "./audiences.service";
 import { CreateAudienceDto } from "./dto/create-audience.dto";
 import { UpdateAudienceDto } from "./dto/update-audience.dto";
@@ -15,10 +16,7 @@ export class AudiencesController {
 
   @Get()
   findAll(@CurrentUser() userId: string, @Query("page") page?: string, @Query("limit") limit?: string) {
-    return this.audiencesService.findAll(userId, {
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
-    });
+    return this.audiencesService.findAll(userId, parsePagination(page, limit, 50));
   }
 
   @Get(":id")

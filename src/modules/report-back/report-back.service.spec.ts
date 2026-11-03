@@ -204,6 +204,24 @@ describe("ReportBackService: report (STAGED -> REPORTED) and the poolable-layer 
     expect(signals).toHaveLength(1);
   });
 
+  it("refuses a report past the per-account daily cap with a 429, writing nothing", async () => {
+    const previous = process.env.DAILY_REPORT_LIMIT;
+    process.env.DAILY_REPORT_LIMIT = "1";
+    try {
+      const { send: first } = await createStagedSend(userId);
+      const { send: second } = await createStagedSend(userId);
+      await service.reportBack({ sendId: first.id, rawFeedback: "4 replies" }, userId);
+
+      await expect(service.reportBack({ sendId: second.id, rawFeedback: "2 replies" }, userId)).rejects.toMatchObject({
+        status: 429,
+      });
+      expect(await prisma.feedbackReport.count({ where: { sendId: second.id } })).toBe(0);
+    } finally {
+      if (previous === undefined) delete process.env.DAILY_REPORT_LIMIT;
+      else process.env.DAILY_REPORT_LIMIT = previous;
+    }
+  });
+
   it("rejects reporting on the same Send twice", async () => {
     const { send } = await createStagedSend(userId);
 

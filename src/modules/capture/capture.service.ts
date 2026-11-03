@@ -1,4 +1,5 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { assertUnderDailyLimit, usageWindowStart } from "../../common/usage-limits";
 import { Channel, ContentPieceStatus, ContentType, Stage, StoryStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStoryDto } from "./dto/create-story.dto";
@@ -59,6 +60,14 @@ export class CaptureService {
     if (!story || story.userId !== userId) {
       throw new NotFoundException(`Story ${storyId} not found`);
     }
+
+    // Per-account daily cap on Gemini-backed drafting (common/usage-limits.ts),
+    // checked before any Gemini call. Counts drafts that were actually created;
+    // per-IP burst limits on the route cover the rest.
+    const draftsInWindow = await this.prisma.contentPiece.count({
+      where: { story: { userId }, createdAt: { gte: usageWindowStart() } },
+    });
+    assertUnderDailyLimit("draft", draftsInWindow);
 
     // VoiceProfile is optional -- most founders won't have one yet (no
     // profile-creation endpoint exists). findUnique returns null in that

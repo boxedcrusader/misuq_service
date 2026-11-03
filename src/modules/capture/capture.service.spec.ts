@@ -124,6 +124,30 @@ describe("CaptureService: capture -> draft happy path", () => {
     expect(seen.map((i) => i.founderName)).toEqual(["Ada", null]);
   });
 
+  it("refuses a draft past the per-account daily cap with a 429, before calling the provider", async () => {
+    const previous = process.env.DAILY_DRAFT_LIMIT;
+    process.env.DAILY_DRAFT_LIMIT = "1";
+    try {
+      const capped = await prisma.user.create({ data: { email: "capped-drafts@misuq.test", passwordHash: "x" } });
+      let calls = 0;
+      const counting: DraftingProvider = {
+        generateDraft: async () => {
+          calls++;
+          return { body: "draft", tone: Tone.CASUAL };
+        },
+      };
+      const cappedService = new CaptureService(prisma, counting);
+      const story = await cappedService.captureStory({ rawCapture: "Shipped it." }, capped.id);
+      await cappedService.draftStory(story.id, capped.id);
+
+      await expect(cappedService.draftStory(story.id, capped.id)).rejects.toMatchObject({ status: 429 });
+      expect(calls).toBe(1);
+    } finally {
+      if (previous === undefined) delete process.env.DAILY_DRAFT_LIMIT;
+      else process.env.DAILY_DRAFT_LIMIT = previous;
+    }
+  });
+
   it("writes NOTHING when draft generation fails -- no ContentPiece, status stays CAPTURED", async () => {
     // Proves the generate-before-transact ordering in draftStory (the
     // generation call happens BEFORE the $transaction opens): a failure
