@@ -10,13 +10,14 @@ async function bootstrap() {
   );
   // Scoped to the one origin that needs it (client/web's dev server) rather
   // than left fully permissive -- this is the seam being proven, not a
-  // general-purpose public API yet. x-user-id is the current auth stand-in
-  // (current-user.decorator.ts), so it must be in allowedHeaders alongside
+  // general-purpose public API yet. Authorization carries the bearer access
+  // token (JwtAuthGuard), so it must be in allowedHeaders alongside
   // content-type or the browser preflight rejects it before the request
-  // ever reaches the handler.
+  // ever reaches the handler. No `credentials: true`: tokens travel in the
+  // header/body, not cookies.
   app.enableCors({
     origin: "http://localhost:3001",
-    allowedHeaders: ["Content-Type", "x-user-id"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   });
   await app.listen(process.env.PORT ?? 3000);
 }

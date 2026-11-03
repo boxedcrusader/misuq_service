@@ -1,7 +1,12 @@
-// Fixed dev user for local frontend integration (no user-creation endpoint
-// exists yet -- auth is deferred, see current-user.decorator.ts). This is
-// the ONE User the frontend's x-user-id stand-in points at while wiring up
-// real screens against the real backend.
+// Fixed dev user for local frontend integration. Real auth exists now
+// (POST /auth/register|login, src/modules/auth/) -- this script gives the
+// pre-auth dev founder a REAL login so the full loop stays walkable: no
+// audience-creation or niche-setting endpoint exists yet, so a freshly
+// registered user can capture/draft but can't send or report back. Log in
+// as this user to exercise every step.
+//
+// Login: dev-founder@misuq.local / DEV_USER_PASSWORD (default below).
+// Re-running resets the password to that value -- dev-only by design.
 //
 // Re-runnable / idempotent: upserts on the fixed email below, so re-running
 // after a `prisma db push` or a test suite's TRUNCATE (which wipes this row
@@ -19,11 +24,18 @@
 // Usage:
 //   DATABASE_URL="postgresql://..." node prisma/scripts/seed-dev-user.js
 
+// Hash with the app's OWN password module (via ts-node) instead of a JS
+// copy of it, so the seed can never drift from the format login verifies.
+require("ts-node").register({ transpileOnly: true });
+const { hashPassword } = require("../../src/modules/auth/password");
 const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
 const DEV_USER_EMAIL = "dev-founder@misuq.local";
+// Local-only account on a .local address -- a known default keeps the
+// seed zero-config; override with DEV_USER_PASSWORD if you prefer.
+const DEV_USER_PASSWORD = process.env.DEV_USER_PASSWORD || "misuq-dev-password";
 
 // No audience-creation endpoint exists (deferred, same as user-creation) --
 // this is the ONLY way the dev user gets an Audience to stage a Send
@@ -47,12 +59,16 @@ async function findOrCreateAudience(userId, data) {
 }
 
 async function main() {
+  const passwordHash = await hashPassword(DEV_USER_PASSWORD);
   const user = await prisma.user.upsert({
     where: { email: DEV_USER_EMAIL },
-    update: {},
+    // passwordHash IS updated on an existing row: older seeds stored the
+    // "not-a-real-hash" placeholder, which can never log in. The id is
+    // still never touched.
+    update: { passwordHash },
     create: {
       email: DEV_USER_EMAIL,
-      passwordHash: "not-a-real-hash",
+      passwordHash,
       name: "Dev Founder",
       niche: "DEV_TOOLS",
       // true, not the schema default false: this dev user is meant to
@@ -63,6 +79,7 @@ async function main() {
   });
 
   console.log(`Dev user ready: ${user.id} (${user.email}, niche=${user.niche}, consent=${user.aggregateLearningConsent})`);
+  console.log(`Dev login: ${DEV_USER_EMAIL} / ${process.env.DEV_USER_PASSWORD ? "<DEV_USER_PASSWORD>" : DEV_USER_PASSWORD}`);
 
   for (const audienceData of DEV_AUDIENCES) {
     const audience = await findOrCreateAudience(user.id, audienceData);
