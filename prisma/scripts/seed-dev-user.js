@@ -1,9 +1,8 @@
-// Fixed dev user for local frontend integration. Real auth exists now
-// (POST /auth/register|login, src/modules/auth/) -- this script gives the
-// pre-auth dev founder a REAL login so the full loop stays walkable: no
-// audience-creation or niche-setting endpoint exists yet, so a freshly
-// registered user can capture/draft but can't send or report back. Log in
-// as this user to exercise every step.
+// Fixed dev user for local frontend integration: an already-onboarded founder
+// (niche, two audiences, onboardedAt set) with a real login, so the full loop
+// is walkable without clicking through /onboarding first. A freshly
+// registered account goes through /onboarding instead (niche → audiences →
+// voice), which is the path to test for new founders.
 //
 // Login: dev-founder@misuq.local / DEV_USER_PASSWORD (default below).
 // Re-running resets the password to that value -- dev-only by design.
@@ -77,6 +76,13 @@ async function main() {
       aggregateLearningConsent: true,
     },
   });
+
+  // The dev founder has a niche and audiences, so it counts as onboarded —
+  // logging in goes straight to the product, not /onboarding. First-write-
+  // wins, same rule as AuthService.completeOnboarding.
+  if (!user.onboardedAt) {
+    await prisma.user.update({ where: { id: user.id }, data: { onboardedAt: new Date() } });
+  }
 
   console.log(`Dev user ready: ${user.id} (${user.email}, niche=${user.niche}, consent=${user.aggregateLearningConsent})`);
   console.log(`Dev login: ${DEV_USER_EMAIL} / ${process.env.DEV_USER_PASSWORD ? "<DEV_USER_PASSWORD>" : DEV_USER_PASSWORD}`);

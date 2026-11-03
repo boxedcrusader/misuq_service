@@ -1,4 +1,11 @@
-import { ConflictException, Inject, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
@@ -7,6 +14,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { AUTH_CONFIG, AuthConfig } from "./auth.config";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { UpdateMeDto } from "./dto/update-me.dto";
 import { normalizeEmail } from "./normalize-email";
 import { getDummyHash, hashPassword, verifyPassword } from "./password";
 
@@ -19,6 +27,7 @@ const PUBLIC_USER_SELECT = {
   plan: true,
   niche: true,
   aggregateLearningConsent: true,
+  onboardedAt: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.UserSelect;
@@ -126,6 +135,45 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: PUBLIC_USER_SELECT });
     if (!user) throw new NotFoundException(`User ${userId} not found`);
     return user;
+  }
+
+  // Profile fields only — never email/password/plan/consent, which each
+  // have their own (future) flows.
+  async updateMe(userId: string, dto: UpdateMeDto): Promise<PublicUser> {
+    await this.me(userId); // 404 if the account is gone
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name === "" ? null : dto.name } : {}),
+        ...(dto.niche !== undefined ? { niche: dto.niche } : {}),
+      },
+      select: PUBLIC_USER_SELECT,
+    });
+  }
+
+  // Records that onboarding finished. Gated on niche — the one onboarding
+  // answer the loop can't run without (report-back fail-closes on null) —
+  // so "onboarded" always implies "can report back". Audiences are NOT
+  // required: finishing with zero is the honest draft-only answer, and
+  // exactly what the onboardedAt + audience count measurement needs to see.
+  //
+  // Idempotent and first-write-wins: re-completing (e.g. revisiting
+  // onboarding to add an audience) never moves the original timestamp —
+  // it's a historical event, not a "last touched" field.
+  async completeOnboarding(userId: string): Promise<PublicUser> {
+    const user = await this.me(userId);
+    if (!user.niche) {
+      throw new BadRequestException("Pick what you're building (your niche) before finishing onboarding.");
+    }
+    if (user.onboardedAt) return user;
+
+    // Conditional on onboardedAt still being null, so two concurrent
+    // completions can't both stamp it.
+    await this.prisma.user.updateMany({
+      where: { id: userId, onboardedAt: null },
+      data: { onboardedAt: new Date() },
+    });
+    return this.me(userId);
   }
 
   private async startSession(userId: string): Promise<TokenPair> {

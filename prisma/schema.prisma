@@ -153,6 +153,14 @@ model User {
   // Minimal JWT refresh-token storage (§4) — hash only, never the raw token.
   hashedRefreshToken String?
 
+  // When the founder FINISHED onboarding (2026-11-03) — an event, stored, not
+  // derived (architecture-principles.md: "decisions and events must be
+  // stored"). It's what separates "onboarded with zero audiences" (they said
+  // they have no room → draft-only) from "never finished onboarding" — the
+  // zero-audience share the product notes said to measure before building
+  // more. Set once, on first completion; never moved by re-completion.
+  onboardedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

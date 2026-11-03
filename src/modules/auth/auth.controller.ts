@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post } from "@nestjs/common";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { Public } from "../../common/decorators/public.decorator";
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { UpdateMeDto } from "./dto/update-me.dto";
 
 @Controller("auth")
 export class AuthController {
@@ -42,5 +43,18 @@ export class AuthController {
   @Get("me")
   me(@CurrentUser() userId: string) {
     return this.authService.me(userId);
+  }
+
+  @Patch("me")
+  updateMe(@CurrentUser() userId: string, @Body() dto: UpdateMeDto) {
+    return this.authService.updateMe(userId, dto);
+  }
+
+  // 200, not 201: records an event on the existing account, creates no
+  // resource. Idempotent — see AuthService.completeOnboarding.
+  @Post("me/onboarding")
+  @HttpCode(HttpStatus.OK)
+  completeOnboarding(@CurrentUser() userId: string) {
+    return this.authService.completeOnboarding(userId);
   }
 }

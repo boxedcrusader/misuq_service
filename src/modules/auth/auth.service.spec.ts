@@ -1,4 +1,5 @@
-import { ConflictException, ExecutionContext, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ExecutionContext, UnauthorizedException } from "@nestjs/common";
+import { Niche } from "@prisma/client";
 import { Reflector } from "@nestjs/core";
 import { JwtService } from "@nestjs/jwt";
 import { createHash } from "node:crypto";
@@ -163,6 +164,56 @@ describe("AuthService + JwtAuthGuard", () => {
       const row = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
       expect(row.hashedRefreshToken).toBeNull();
       await expect(service.refresh(refreshToken)).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe("profile + onboarding", () => {
+    it("a new account starts with no niche and not onboarded", async () => {
+      const { user } = await service.register({ email: "fresh@example.com", password: "password-one" });
+      expect(user.niche).toBeNull();
+      expect(user.onboardedAt).toBeNull();
+    });
+
+    it("updateMe sets niche and name; an empty name clears it; an empty body is a no-op", async () => {
+      const { user } = await service.register({ email: "me@example.com", password: "password-one", name: "Old" });
+
+      const updated = await service.updateMe(user.id, { niche: Niche.DEV_TOOLS, name: "Ada" });
+      expect(updated).toMatchObject({ niche: Niche.DEV_TOOLS, name: "Ada" });
+      expect(updated).not.toHaveProperty("passwordHash");
+
+      expect((await service.updateMe(user.id, { name: "" })).name).toBeNull();
+      expect(await service.updateMe(user.id, {})).toMatchObject({ niche: Niche.DEV_TOOLS, name: null });
+    });
+
+    it("refuses to complete onboarding without a niche (report-back needs one)", async () => {
+      const { user } = await service.register({ email: "noniche@example.com", password: "password-one" });
+      await expect(service.completeOnboarding(user.id)).rejects.toBeInstanceOf(BadRequestException);
+      expect((await service.me(user.id)).onboardedAt).toBeNull();
+    });
+
+    it("completes onboarding with ZERO audiences — the honest draft-only answer", async () => {
+      const { user } = await service.register({ email: "zero@example.com", password: "password-one" });
+      await service.updateMe(user.id, { niche: Niche.AI_TOOLS });
+
+      const done = await service.completeOnboarding(user.id);
+      expect(done.onboardedAt).toBeInstanceOf(Date);
+      expect(await prisma.audience.count({ where: { userId: user.id } })).toBe(0);
+    });
+
+    it("is first-write-wins: re-completing never moves the original timestamp", async () => {
+      const { user } = await service.register({ email: "twice@example.com", password: "password-one" });
+      await service.updateMe(user.id, { niche: Niche.FINTECH });
+      const first = (await service.completeOnboarding(user.id)).onboardedAt!;
+
+      const again = await service.completeOnboarding(user.id);
+      expect(again.onboardedAt!.getTime()).toBe(first.getTime());
+    });
+
+    it("stamps once under concurrent completion", async () => {
+      const { user } = await service.register({ email: "race2@example.com", password: "password-one" });
+      await service.updateMe(user.id, { niche: Niche.OTHER });
+      const [a, b] = await Promise.all([service.completeOnboarding(user.id), service.completeOnboarding(user.id)]);
+      expect(a.onboardedAt!.getTime()).toBe(b.onboardedAt!.getTime());
     });
   });
 
