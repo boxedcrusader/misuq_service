@@ -2,6 +2,10 @@ import { Injectable } from "@nestjs/common";
 import { Channel, Sentiment } from "@prisma/client";
 import { ExtractedSignal, ExtractionProvider } from "./extraction.provider";
 
+// TEST-ONLY since GeminiExtractionProvider replaced it in report-back.module.ts
+// (2026-11-03) — binding it in the app would write fabricated, permanent
+// SignalRecords for every real report.
+//
 // Deterministic, no randomness, no network call, and deliberately IGNORES
 // rawFeedback/channel content — this is the seam a real LLM provider slots
 // into later by being bound to EXTRACTION_PROVIDER in report-back.module.ts

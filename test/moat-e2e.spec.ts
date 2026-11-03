@@ -191,14 +191,14 @@ describe("Moat E2E: full capture->draft->stage->report chain feeds the real aggr
 
     for (const seed of CONSENTING_SEED) {
       const result = await runFullChain(seed, consentingUserId, consentingAudience.id);
-      signalRecordsByLabel.set(seed.label, { id: result.report.signalRecord.id });
+      signalRecordsByLabel.set(seed.label, { id: result.report.signalRecord!.id });
       if (!firstStoryRefs) {
         firstStoryRefs = { storyId: result.story.id, contentPieceId: result.contentPiece.id, sendId: result.send.id };
       }
     }
 
     const optedOutResult = await runFullChain(OPTED_OUT_SEED, optedOutUserId, optedOutAudience.id);
-    signalRecordsByLabel.set(OPTED_OUT_SEED.label, { id: optedOutResult.report.signalRecord.id });
+    signalRecordsByLabel.set(OPTED_OUT_SEED.label, { id: optedOutResult.report.signalRecord!.id });
   }, 30000); // 9 stories x real capture->draft->stage->report chain is 36+ sequential DB
   // round trips; comfortably under 10s alone but was already borderline against
   // Jest's 5000ms default hook timeout in a full `jest` run (later in the run
