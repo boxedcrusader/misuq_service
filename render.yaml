@@ -13,13 +13,19 @@ services:
     # free sleeps after ~15 min idle (first request then takes ~30-60s).
     # Switch to `starter` for an always-on beta.
     plan: free
+    # The Prisma steps live in package.json, not here: the live service
+    # (misuq_api) was created in the dashboard, so Render runs the dashboard's
+    # commands and ignores this file. `npm run build` runs `prisma generate`
+    # first. Without it, Render's cached node_modules keep a client generated
+    # from the previous schema, and tsc fails with exit 2 (2026-11-04).
     # --include=dev: the TypeScript compiler and the Prisma CLI are
     # devDependencies, and `prisma migrate deploy` runs at start.
-    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
-    # Applies pending migrations, then starts. migrate deploy only ever runs
-    # committed migrations (never resets or generates), so it's safe on every
-    # boot.
-    startCommand: npx prisma migrate deploy && node dist/main.js
+    buildCommand: npm ci --include=dev && npm run build
+    # `npm start` applies pending migrations, then starts. migrate deploy only
+    # ever runs committed migrations (it never resets or generates), so it's
+    # safe on every boot. A failed migration stops this boot, and Render keeps
+    # the previous deploy live.
+    startCommand: npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
