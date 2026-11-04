@@ -4,6 +4,7 @@ import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { parsePagination } from "../../common/http/pagination";
 import { CaptureService } from "./capture.service";
 import { CreateStoryDto } from "./dto/create-story.dto";
+import { DraftStoryDto } from "./dto/draft-story.dto";
 
 @Controller("stories")
 export class CaptureController {
@@ -18,8 +19,8 @@ export class CaptureController {
   // daily cap in the service (common/usage-limits.ts).
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post(":id/draft")
-  draftStory(@Param("id") id: string, @CurrentUser() userId: string) {
-    return this.captureService.draftStory(id, userId);
+  draftStory(@Param("id") id: string, @Body() dto: DraftStoryDto, @CurrentUser() userId: string) {
+    return this.captureService.draftStory(id, userId, dto.channel);
   }
 
   @Get()

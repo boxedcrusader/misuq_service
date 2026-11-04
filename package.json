@@ -43,6 +43,8 @@
       "<rootDir>/test"
     ],
     "testRegex": ".*\\.spec\\.ts$",
-    "maxWorkers": 1
+    "maxWorkers": 1,
+    "globalSetup": "<rootDir>/test/guard-database.js",
+    "testTimeout": 60000
   }
 }

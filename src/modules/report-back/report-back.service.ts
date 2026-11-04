@@ -7,8 +7,8 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { Channel, ContentType, Niche, Prisma, SignalRecord, StoryStatus, Tone } from "@prisma/client";
-import { assertUnderDailyLimit, usageWindowStart } from "../../common/usage-limits";
+import { AiTask, AudienceType, Channel, ContentType, Niche, Prisma, SignalRecord, StoryStatus, Tone } from "@prisma/client";
+import { reserveAiRequest } from "../../common/usage-limits";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateReportDto } from "./dto/create-report.dto";
 import { EXTRACTION_PROVIDER, ExtractedSignal, ExtractionProvider } from "./extraction/extraction.provider";
@@ -43,6 +43,7 @@ interface SignalSnapshot {
   contentType: ContentType;
   tone: Tone | null;
   audienceSizeSnapshot: number;
+  audienceTypeSnapshot: AudienceType;
 }
 
 // ContentPiece.tone OTHER means "the drafting step couldn't classify the
@@ -87,7 +88,7 @@ export class ReportBackService {
   async reportBack(dto: CreateReportDto, userId: string) {
     const send = await this.prisma.send.findUnique({
       where: { id: dto.sendId },
-      include: { contentPiece: { include: { story: { include: { user: true } } } } },
+      include: { audience: true, contentPiece: { include: { story: { include: { user: true } } } } },
     });
     const story = send?.contentPiece.story;
     if (!send || !story || story.userId !== userId) {
@@ -120,12 +121,9 @@ export class ReportBackService {
       throw new ConflictException(`Send ${dto.sendId} has already been reported on`);
     }
 
-    // Per-account daily cap on Gemini-backed extraction (common/usage-limits.ts),
-    // checked before anything is written.
-    const reportsInWindow = await this.prisma.feedbackReport.count({
-      where: { send: { contentPiece: { story: { userId } } }, createdAt: { gte: usageWindowStart() } },
-    });
-    assertUnderDailyLimit("report", reportsInWindow);
+    // Per-account and global daily AI caps (common/usage-limits.ts), checked
+    // and recorded before anything is written or any model is called.
+    await reserveAiRequest(this.prisma, userId, AiTask.EXTRACTION);
 
     // Snapshotted NOW, at report time, from the rows read above — not
     // re-read when the signal is written a moment later.
@@ -136,6 +134,7 @@ export class ReportBackService {
       contentType: story.contentType,
       tone: poolableTone(send.contentPiece.tone),
       audienceSizeSnapshot: send.audienceSizeSnapshot,
+      audienceTypeSnapshot: send.audience.type,
     };
 
     // Step 1 — the durable human fact.
@@ -182,7 +181,7 @@ export class ReportBackService {
       where: { id: feedbackReportId },
       include: {
         signalRecord: true,
-        send: { include: { contentPiece: { include: { story: { include: { user: true } } } } } },
+        send: { include: { audience: true, contentPiece: { include: { story: { include: { user: true } } } } } },
       },
     });
     const story = report?.send.contentPiece.story;
@@ -196,6 +195,11 @@ export class ReportBackService {
       throw new BadRequestException(NICHE_REQUIRED);
     }
 
+    // Re-extraction calls the model again, so it spends the same daily
+    // allowance as a report (the 2026-11-04 pentest found it uncapped: 6
+    // retries of one failing report all reached the model).
+    await reserveAiRequest(this.prisma, userId, AiTask.EXTRACTION);
+
     const signalRecord = await this.recordSignal(report.id, report.rawFeedback, {
       userId,
       niche: story.user.niche,
@@ -203,6 +207,7 @@ export class ReportBackService {
       contentType: story.contentType,
       tone: poolableTone(report.send.contentPiece.tone),
       audienceSizeSnapshot: report.send.audienceSizeSnapshot,
+      audienceTypeSnapshot: report.send.audience.type,
     });
 
     const { send: _send, signalRecord: _none, ...feedbackReport } = report;

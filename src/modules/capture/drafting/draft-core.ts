@@ -1,5 +1,5 @@
 import { Logger } from "@nestjs/common";
-import { Tone } from "@prisma/client";
+import { Channel, Tone } from "@prisma/client";
 import { GenerateDraftInput } from "./drafting.provider";
 import { DraftGenerationFailedException } from "./draft-generation-failed.exception";
 import { findUngroundedNumbers } from "./grounding";
@@ -17,7 +17,67 @@ export interface DraftResult {
 }
 
 // Shared field descriptions for each provider's response schema.
-export const DRAFT_BODY_DESCRIPTION = "The full preview email, following the prompt's greeting and SIGN-OFF rules.";
+export const DRAFT_BODY_DESCRIPTION = "The finished post, following the prompt's FORMAT, LENGTH and SIGN-OFF rules.";
+
+// The formats a founder can draft in (founder decision 2026-11-04: email was
+// hardcoded, but build-in-public founders post on X and LinkedIn first).
+export const DRAFT_CHANNELS = [Channel.EMAIL, Channel.X, Channel.LINKEDIN] as const;
+export type DraftChannel = (typeof DRAFT_CHANNELS)[number];
+
+// X's hard limit for a standard account. Counted in code points; close enough
+// for the plain text Misuq writes (X counts links as 23 and some CJK as 2).
+export const X_MAX_CHARS = 280;
+
+export function xLength(body: string): number {
+  return [...body].length;
+}
+
+// Who reads it, its shape, and its length, per format. Everything else in the
+// prompt (FACTS, CRAFT, voice, angle) is the same for every format.
+const FORMAT_RULES: Record<DraftChannel, { reader: string[]; format: string[]; length: string[]; usesSignOff: boolean }> = {
+  EMAIL: {
+    reader: [
+      `It goes to their OWN small, warm audience — beta testers, a Discord, close peers —`,
+      `NOT a public launch feed, as an email. No press-release hype, no announcement`,
+      `voice. Talk to people who already know them.`,
+    ],
+    format: [`FORMAT: a short email. A greeting, if any, is 1-3 words on the same line ("Hey all —").`],
+    length: [`LENGTH: usually 40-100 words, never more than 150. Never pad to reach it — a thin update stays`, `short.`],
+    usesSignOff: true,
+  },
+  X: {
+    reader: [
+      `It's a post on X, to the founder's own followers: people who chose to follow them, but scroll`,
+      `fast and owe them nothing. No press-release hype, no announcement voice, no growth-hacker tone.`,
+    ],
+    format: [
+      `FORMAT: ONE X post, not a thread. No greeting ("Hey all"), no sign-off — it appears under their`,
+      `name. The first line is the hook and must work on its own in a fast-scrolling feed.`,
+    ],
+    length: [
+      `LENGTH: at most ${X_MAX_CHARS} characters INCLUDING spaces — a hard limit, count them. Usually`,
+      `120-260. Line breaks are fine. A thin update makes a short post.`,
+    ],
+    usesSignOff: false,
+  },
+  LINKEDIN: {
+    reader: [
+      `It's a LinkedIn post, to the founder's own network: peers, past colleagues, people in their`,
+      `industry. Human, not corporate: no "Excited to announce", no humble-brag, no "Agree?" bait.`,
+    ],
+    format: [
+      `FORMAT: a LinkedIn post. No greeting, no sign-off — it appears under their name. Short`,
+      `paragraphs of 1-2 sentences with a blank line between. The first line must make sense on its`,
+      `own, because LinkedIn hides the rest behind "see more".`,
+    ],
+    length: [`LENGTH: usually 60-180 words. Never pad — a thin update makes a short post.`],
+    usesSignOff: false,
+  },
+};
+
+export function formatRulesFor(channel: Channel) {
+  return FORMAT_RULES[(DRAFT_CHANNELS as readonly Channel[]).includes(channel) ? (channel as DraftChannel) : Channel.EMAIL];
+}
 export const DRAFT_TONE_DESCRIPTION = "The post's emotional angle: the single best fit from the defined list.";
 
 // Code-level backstop for the prompt's FACTS rule: a draft containing a
@@ -33,21 +93,47 @@ export async function generateGroundedDraft(
 ): Promise<DraftResult> {
   const sources = [input.rawCapture, input.title ?? "", input.founderName ?? ""];
   const basePrompt = buildDraftPrompt(input);
+  const isX = input.channel === Channel.X;
+  const check = (body: string) => ({
+    invented: findUngroundedNumbers(body, sources),
+    tooLong: isX && xLength(body) > X_MAX_CHARS,
+  });
 
   const first = await attempt(basePrompt);
-  const invented = findUngroundedNumbers(first.body, sources);
-  if (invented.length === 0) return first;
+  const firstCheck = check(first.body);
+  if (firstCheck.invented.length === 0 && !firstCheck.tooLong) return first;
 
-  // Count only — the numbers themselves come from founder-adjacent text.
-  logger.warn(`Draft contained ${invented.length} number(s) not in the founder's update; retrying once`);
-  const correction = [
-    "",
-    `YOUR PREVIOUS DRAFT BROKE THE FACTS RULE: it contained ${invented.map((n) => `"${n}"`).join(", ")}, which`,
-    `the founder never wrote. Write it again using only facts from the raw update.`,
-  ].join("\n");
-  const second = await attempt(basePrompt + correction);
-  if (findUngroundedNumbers(second.body, sources).length === 0) return second;
+  // Counts only in logs — the numbers themselves come from founder-adjacent text.
+  const correction = [""];
+  if (firstCheck.invented.length > 0) {
+    logger.warn(`Draft contained ${firstCheck.invented.length} number(s) not in the founder's update; retrying once`);
+    correction.push(
+      `YOUR PREVIOUS DRAFT BROKE THE FACTS RULE: it contained ${firstCheck.invented.map((n) => `"${n}"`).join(", ")}, which`,
+      `the founder never wrote. Write it again using only facts from the raw update.`,
+    );
+  }
+  if (firstCheck.tooLong) {
+    logger.warn(`X draft was ${xLength(first.body)} characters (limit ${X_MAX_CHARS}); retrying once`);
+    correction.push(
+      `YOUR PREVIOUS DRAFT WAS ${xLength(first.body)} CHARACTERS: an X post must be at most ${X_MAX_CHARS}. Write it`,
+      `again, shorter: keep the hook and the most important fact, cut the rest.`,
+    );
+  }
+  const second = await attempt(basePrompt + correction.join("\n"));
+  const secondCheck = check(second.body);
 
+  // Invented facts are never returned. An over-long X post is (the founder
+  // can trim it, and the client shows the count) — but a grounded draft
+  // within the limit wins over one that isn't.
+  if (secondCheck.invented.length === 0 && !secondCheck.tooLong) return second;
+  if (secondCheck.invented.length === 0) {
+    logger.warn("X draft still over the character limit after a corrective retry; returning it for the founder to trim");
+    return second;
+  }
+  if (firstCheck.invented.length === 0) {
+    logger.warn("Corrective retry invented numbers; returning the grounded first draft instead");
+    return first;
+  }
   logger.error("Draft still contained invented numbers after a corrective retry; failing");
   throw new DraftGenerationFailedException();
 }
@@ -122,15 +208,16 @@ export function buildDraftPrompt(input: GenerateDraftInput): string {
 
   // Newlines/quotes stripped: the name is interpolated inside quotes below.
   const name = founderName?.replace(/["\r\n]/g, " ").trim();
-  const signOff = name
-    ? `SIGN-OFF: end with a sign-off as "${name}".`
-    : `SIGN-OFF: no sign-off line at all — you don't know the founder's name, and must never invent one.`;
+  const rules = formatRulesFor(channel);
+  const signOff = !rules.usesSignOff
+    ? `SIGN-OFF: none. Never add a name or sign-off line.`
+    : name
+      ? `SIGN-OFF: end with a sign-off as "${name}".`
+      : `SIGN-OFF: no sign-off line at all — you don't know the founder's name, and must never invent one.`;
 
   return [
-    `You are drafting a PREVIEW post for a founder building in public.`,
-    `It goes to their OWN small, warm audience — beta testers, a Discord, close peers —`,
-    `NOT a public launch feed, formatted for ${channel}. No press-release hype, no announcement`,
-    `voice. Talk to people who already know them.`,
+    `You are drafting a post for a founder building in public.`,
+    ...rules.reader,
     "",
     // FACTS comes first and overrides everything after it. The old prompt had
     // none, and its structure rules ("a real number", "a surprising
@@ -172,16 +259,16 @@ export function buildDraftPrompt(input: GenerateDraftInput): string {
     `STRUCTURE — this comes from you, NOT from the voice samples. Apply it to the facts above; never`,
     `add a fact to satisfy it:`,
     `- Open with a hook that earns the first line, built from the most concrete detail IN the update.`,
-    `  A greeting, if any, is 1-3 words on the same line ("Hey all —"); the hook is what follows. Never`,
-    `  open with a throat-clear ("So,", "Excited to", "Quick update").`,
+    `  The hook comes first (after a greeting only where FORMAT allows one). Never open with a`,
+    `  throat-clear ("So,", "Excited to", "Quick update").`,
     `- One idea per post: what happened → why it matters or what was hard (only if the update says) →`,
     `  what's next (only if the update says).`,
     `- Name the specific things the update names; never swap in specifics it doesn't contain.`,
     `- End on something a reader can actually react to (a question, a small ask, an open thread), not`,
     `  a CTA.`,
     "",
-    `LENGTH: usually 40-100 words, never more than 150. Never pad to reach it — a thin update stays`,
-    `short.`,
+    ...rules.format,
+    ...rules.length,
     signOff,
     `CONSTRAINTS: Plain sentences. No hashtags. No emoji unless the voice reference clearly uses them.`,
     "",

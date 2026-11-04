@@ -76,6 +76,12 @@ enum AudienceType {
   DISCORD
   BETA_USERS
   PEERS
+  // Public rooms (founder decision 2026-11-04): a founder who builds in
+  // public can test a story on the followers they already have, then take
+  // what lands to their other channels. Results from these are tagged via
+  // SignalRecord.audienceTypeSnapshot so they never pool with warm-room ones.
+  X_FOLLOWERS
+  LINKEDIN_NETWORK
 }
 
 // Coarse structured read of the freeform feedback's overall tone (§5 step
@@ -168,6 +174,7 @@ model User {
   audiences     Audience[]
   voiceProfile  VoiceProfile?
   signalRecords SignalRecord[]
+  aiRequests    AiRequest[]
 }
 
 model Story {
@@ -356,6 +363,13 @@ model SignalRecord {
   // zero — the extraction step must never coerce a missing report into 0,
   // that fabricates a "nothing happened" fact the founder never said.
   audienceSizeSnapshot Int
+  // The KIND of room the signal came from, frozen at report time (§5 rule 1).
+  // Warm rooms (a list, peers) and public feeds (X followers) behave
+  // differently, so any aggregation must group or filter on this. Null only
+  // on rows written before 2026-11-04 (never backfilled: a guess would be
+  // immortal); every new row sets it. Safe to read from Audience.type at
+  // report time because a room's type can't change after creation.
+  audienceTypeSnapshot AudienceType?
   views                Int? // people who SAW it — distinct from audienceSizeSnapshot (who it was sent to)
   replyCount           Int?
   signupCount          Int?
@@ -422,4 +436,32 @@ model AggregatedInsight {
   updatedAt DateTime @updatedAt
 
   @@unique([niche, channel, contentType, tone])
+}
+
+// ─── Operational layer: AI spend accounting (2026-11-04) ─────────────────
+// Neither private nor poolable: one row per AI-backed action a founder
+// STARTED (a draft, a report-back extraction, a re-extraction), written
+// BEFORE the model is called. The daily caps count these rows, so failed and
+// retried calls count too (the 2026-11-04 pentest: 5 failing drafts all
+// reached the model under a cap of 3, because the cap counted only drafts
+// that succeeded). Not derivable from ContentPiece/FeedbackReport, which
+// only exist for successes — hence stored.
+enum AiTask {
+  DRAFT
+  EXTRACTION
+}
+
+model AiRequest {
+  id     String @id @default(cuid())
+  userId String
+  // Cascade: spend accounting is operational data, not history worth
+  // keeping once the account is gone.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task   AiTask
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, task, createdAt])
+  @@index([createdAt])
 }

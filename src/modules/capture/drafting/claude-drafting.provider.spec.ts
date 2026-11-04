@@ -47,7 +47,7 @@ describe("ClaudeDraftingProvider", () => {
   it("builds the client from ANTHROPIC_API_KEY with a timeout and bounded retries", () => {
     provider();
     expect(mockCtor).toHaveBeenCalledWith(
-      expect.objectContaining({ apiKey: "test-fake-anthropic-key", timeout: expect.any(Number), maxRetries: 2 }),
+      expect.objectContaining({ apiKey: "test-fake-anthropic-key", timeout: expect.any(Number), maxRetries: 1 }),
     );
   });
 
