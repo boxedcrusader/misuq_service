@@ -39,7 +39,7 @@ const VALUE_SCHEMA: Record<FieldKind, Record<string, unknown>> = {
   postFormat: { type: "string", enum: POST_FORMAT_VALUES },
 };
 
-// Each field is { value, evidence } or null (anyOf with null — 9 unions, under
+// Each field is { value, evidence } or null (anyOf with null — 15 unions, under
 // the structured-outputs limit of 16). Every property is required, so the
 // model must answer each one explicitly, null included.
 // additionalProperties: false on every object, as structured outputs require.

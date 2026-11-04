@@ -24,6 +24,7 @@ const FEEDBACK = "About 30 people opened it, 4 replied asking about passkeys. Ze
 const NULLS = {
   views: null, replyCount: null, signupCount: null, sentiment: null, hasMedia: null,
   hasExternalLink: null, postFormat: null, followerCountSnapshot: null, isPremiumAccount: null,
+  likeCount: null, repostCount: null, quoteCount: null, bookmarkCount: null, shareCount: null, newFollowerCount: null,
 };
 function respond(fields: Record<string, unknown>, stop_reason = "end_turn") {
   mockCreate.mockResolvedValue({ stop_reason, stop_details: null, content: [{ type: "text", text: JSON.stringify({ ...NULLS, ...fields }) }] });
@@ -72,9 +73,9 @@ describe("ClaudeExtractionProvider", () => {
     for (const o of objects) expect(o.additionalProperties).toBe(false);
     for (const banned of ["minimum", "maximum", "multipleOf", "minLength", "maxLength"]) expect(keys.has(banned)).toBe(false);
     const unions = Object.values(format.schema.properties as Record<string, { anyOf?: unknown[] }>).filter((p) => p.anyOf);
-    expect(unions.length).toBe(9);
+    expect(unions.length).toBe(15);
     expect(unions.length).toBeLessThanOrEqual(16);
-    expect(format.schema.required).toHaveLength(9);
+    expect(format.schema.required).toHaveLength(15);
   });
 
   it("keeps grounded values and nulls ungrounded ones (shared founder-quote check)", async () => {

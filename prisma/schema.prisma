@@ -178,12 +178,16 @@ model User {
 }
 
 model Story {
-  id          String      @id @default(cuid())
-  userId      String
-  rawCapture  String
-  title       String?
-  contentType ContentType
-  status      StoryStatus @default(CAPTURED)
+  id                 String       @id @default(cuid())
+  userId             String
+  rawCapture         String
+  title              String?
+  contentType        ContentType
+  status             StoryStatus  @default(CAPTURED)
+  // Set only while status is ARCHIVED: the status the founder archived it
+  // from, so unarchiving puts it back exactly where it was (statuses are
+  // read from the column, never re-derived from relations).
+  archivedFromStatus StoryStatus?
 
   // Set only by the founder — the one human-gated graduation decision (§2).
   graduatedAt DateTime?
@@ -196,7 +200,7 @@ model Story {
 }
 
 model ContentPiece {
-  id      String             @id @default(cuid())
+  id      String  @id @default(cuid())
   storyId String
   channel Channel
   stage   Stage
@@ -374,6 +378,15 @@ model SignalRecord {
   replyCount           Int?
   signupCount          Int?
   sentiment            Sentiment?
+  // The engagement X ranks on (added 2026-11-04, from X's open-sourced
+  // scoring): shares, quotes and new follows weigh far more than likes. All
+  // founder-reported and grounded like the counts above; null = not said.
+  likeCount            Int? // likes, hearts or reactions
+  repostCount          Int? // reposts / retweets / reshares (not quotes)
+  quoteCount           Int? // quote posts: a repost with their own comment
+  bookmarkCount        Int? // bookmarks or saves
+  shareCount           Int? // sent on: DMs, LinkedIn "sends", copy-link shares
+  newFollowerCount     Int? // followers or subscribers gained from this post
 
   // Frozen distribution features — platform reach at post time, kept
   // separate from the resonance counts above (README §5 rule 1: freeze the

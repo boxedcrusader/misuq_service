@@ -79,4 +79,23 @@ describe("parseExtractedSignal: zero counts", () => {
     expect(result.hasExternalLink).toBe(false);
     expect(result.hasMedia).toBe(true);
   });
+
+  it("reads X's engagement counts, each grounded, and rejects ones that aren't", () => {
+    const raw = "1.4k views, 6 replies, 3 quote tweets, 12 bookmarks and 4 new followers. A few reposts.";
+    const result = parse(raw, {
+      views: { value: 1400, evidence: "1.4k views" },
+      replyCount: { value: 6, evidence: "6 replies" },
+      quoteCount: { value: 3, evidence: "3 quote tweets" },
+      bookmarkCount: { value: 12, evidence: "12 bookmarks" },
+      newFollowerCount: { value: 4, evidence: "4 new followers" },
+      // Vague ("a few") must not become a number; and a quote that isn't in
+      // the message is never trusted.
+      repostCount: { value: 0, evidence: "A few reposts" },
+      shareCount: { value: 9, evidence: "9 DMs" },
+    });
+    expect(result).toMatchObject({ views: 1400, replyCount: 6, quoteCount: 3, bookmarkCount: 12, newFollowerCount: 4 });
+    expect(result.repostCount).toBeNull();
+    expect(result.shareCount).toBeNull();
+    expect(result.likeCount).toBeNull();
+  });
 });

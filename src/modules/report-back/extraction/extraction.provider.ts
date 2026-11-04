@@ -8,6 +8,12 @@ export interface ExtractedSignal {
   views: number | null;
   replyCount: number | null;
   signupCount: number | null;
+  likeCount: number | null;
+  repostCount: number | null;
+  quoteCount: number | null;
+  bookmarkCount: number | null;
+  shareCount: number | null;
+  newFollowerCount: number | null;
   sentiment: Sentiment | null;
   hasMedia: boolean | null;
   hasExternalLink: boolean | null;

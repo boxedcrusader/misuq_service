@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { parsePagination } from "../../common/http/pagination";
 import { CaptureService } from "./capture.service";
 import { CreateStoryDto } from "./dto/create-story.dto";
 import { DraftStoryDto } from "./dto/draft-story.dto";
+import { UpdateStoryDto } from "./dto/update-story.dto";
 
 @Controller("stories")
 export class CaptureController {
@@ -31,5 +32,30 @@ export class CaptureController {
   @Get(":id")
   findOne(@Param("id") id: string, @CurrentUser() userId: string) {
     return this.captureService.findOne(id, userId);
+  }
+
+  // Edit the captured update itself; only until something is sent.
+  @Patch(":id")
+  updateStory(@Param("id") id: string, @Body() dto: UpdateStoryDto, @CurrentUser() userId: string) {
+    return this.captureService.updateStory(id, userId, dto);
+  }
+
+  // Only while nothing is sent; a sent story is archived instead.
+  @Delete(":id")
+  @HttpCode(204)
+  deleteStory(@Param("id") id: string, @CurrentUser() userId: string) {
+    return this.captureService.deleteStory(id, userId);
+  }
+
+  @Post(":id/archive")
+  @HttpCode(200)
+  archiveStory(@Param("id") id: string, @CurrentUser() userId: string) {
+    return this.captureService.archiveStory(id, userId);
+  }
+
+  @Post(":id/unarchive")
+  @HttpCode(200)
+  unarchiveStory(@Param("id") id: string, @CurrentUser() userId: string) {
+    return this.captureService.unarchiveStory(id, userId);
   }
 }
