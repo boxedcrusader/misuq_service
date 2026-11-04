@@ -69,6 +69,8 @@ export class GeminiDraftingProvider implements DraftingProvider {
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
           httpOptions: { timeout: TIMEOUT_MS },
+          // Cost cap, same as the Claude providers (~130 tokens is typical).
+          maxOutputTokens: 2_048,
         },
       });
       text = response.text;

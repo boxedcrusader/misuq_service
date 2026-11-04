@@ -20,9 +20,14 @@ import { SignalExtractionFailedException } from "./signal-extraction-failed.exce
 // no server-side fallback, so a decline is handled below.
 const MODEL = "claude-haiku-5-5";
 const EFFORT = "low" as const;
+// Ceilings sized from measurement (2026-11-03 live runs: ~130 output tokens
+// per call including thinking, 2-4s latency), not defaults. MAX_TOKENS is a
+// cost cap: a prompt-injected "write 3000 words" stops at ~15x the normal
+// size and fails cleanly (stop_reason max_tokens). One SDK retry: with the
+// app's own retry on top, a failure costs at most 4 calls, not 6.
 const TIMEOUT_MS = 30_000;
-const MAX_RETRIES = 2;
-const MAX_TOKENS = 16_000;
+const MAX_RETRIES = 1;
+const MAX_TOKENS = 2_048;
 
 // Structured outputs reject numeric constraints (minimum/maximum) in a raw
 // schema, so counts are plain integers here; non-negativity and the upper

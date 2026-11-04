@@ -7,8 +7,8 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { Channel, ContentType, Niche, Prisma, SignalRecord, StoryStatus, Tone } from "@prisma/client";
-import { assertUnderDailyLimit, usageWindowStart } from "../../common/usage-limits";
+import { AiTask, Channel, ContentType, Niche, Prisma, SignalRecord, StoryStatus, Tone } from "@prisma/client";
+import { reserveAiRequest } from "../../common/usage-limits";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateReportDto } from "./dto/create-report.dto";
 import { EXTRACTION_PROVIDER, ExtractedSignal, ExtractionProvider } from "./extraction/extraction.provider";
@@ -120,12 +120,9 @@ export class ReportBackService {
       throw new ConflictException(`Send ${dto.sendId} has already been reported on`);
     }
 
-    // Per-account daily cap on Gemini-backed extraction (common/usage-limits.ts),
-    // checked before anything is written.
-    const reportsInWindow = await this.prisma.feedbackReport.count({
-      where: { send: { contentPiece: { story: { userId } } }, createdAt: { gte: usageWindowStart() } },
-    });
-    assertUnderDailyLimit("report", reportsInWindow);
+    // Per-account and global daily AI caps (common/usage-limits.ts), checked
+    // and recorded before anything is written or any model is called.
+    await reserveAiRequest(this.prisma, userId, AiTask.EXTRACTION);
 
     // Snapshotted NOW, at report time, from the rows read above — not
     // re-read when the signal is written a moment later.
@@ -195,6 +192,11 @@ export class ReportBackService {
     if (!story.user.niche) {
       throw new BadRequestException(NICHE_REQUIRED);
     }
+
+    // Re-extraction calls the model again, so it spends the same daily
+    // allowance as a report (the 2026-11-04 pentest found it uncapped: 6
+    // retries of one failing report all reached the model).
+    await reserveAiRequest(this.prisma, userId, AiTask.EXTRACTION);
 
     const signalRecord = await this.recordSignal(report.id, report.rawFeedback, {
       userId,

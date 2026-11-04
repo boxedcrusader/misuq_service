@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { assertUnderDailyLimit, usageWindowStart } from "../../common/usage-limits";
-import { Channel, ContentPieceStatus, ContentType, Stage, StoryStatus } from "@prisma/client";
+import { reserveAiRequest } from "../../common/usage-limits";
+import { AiTask, Channel, ContentPieceStatus, ContentType, Stage, StoryStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStoryDto } from "./dto/create-story.dto";
 import { DRAFTING_PROVIDER, DraftingProvider } from "./drafting/drafting.provider";
@@ -61,13 +61,10 @@ export class CaptureService {
       throw new NotFoundException(`Story ${storyId} not found`);
     }
 
-    // Per-account daily cap on Gemini-backed drafting (common/usage-limits.ts),
-    // checked before any Gemini call. Counts drafts that were actually created;
-    // per-IP burst limits on the route cover the rest.
-    const draftsInWindow = await this.prisma.contentPiece.count({
-      where: { story: { userId }, createdAt: { gte: usageWindowStart() } },
-    });
-    assertUnderDailyLimit("draft", draftsInWindow);
+    // Per-account and global daily AI caps (common/usage-limits.ts): the
+    // attempt is recorded before the model is called, so a draft that fails
+    // still counts. After the ownership check, so a 404 costs nothing.
+    await reserveAiRequest(this.prisma, userId, AiTask.DRAFT);
 
     // VoiceProfile is optional -- most founders won't have one yet (no
     // profile-creation endpoint exists). findUnique returns null in that

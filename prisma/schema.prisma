@@ -168,6 +168,7 @@ model User {
   audiences     Audience[]
   voiceProfile  VoiceProfile?
   signalRecords SignalRecord[]
+  aiRequests    AiRequest[]
 }
 
 model Story {
@@ -422,4 +423,32 @@ model AggregatedInsight {
   updatedAt DateTime @updatedAt
 
   @@unique([niche, channel, contentType, tone])
+}
+
+// ─── Operational layer: AI spend accounting (2026-11-04) ─────────────────
+// Neither private nor poolable: one row per AI-backed action a founder
+// STARTED (a draft, a report-back extraction, a re-extraction), written
+// BEFORE the model is called. The daily caps count these rows, so failed and
+// retried calls count too (the 2026-11-04 pentest: 5 failing drafts all
+// reached the model under a cap of 3, because the cap counted only drafts
+// that succeeded). Not derivable from ContentPiece/FeedbackReport, which
+// only exist for successes — hence stored.
+enum AiTask {
+  DRAFT
+  EXTRACTION
+}
+
+model AiRequest {
+  id     String @id @default(cuid())
+  userId String
+  // Cascade: spend accounting is operational data, not history worth
+  // keeping once the account is gone.
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task   AiTask
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, task, createdAt])
+  @@index([createdAt])
 }
