@@ -1,0 +1,42 @@
+{
+  "judge": "example-judge",
+  "founderName": "Ada",
+  "voiceSample": "Shipped dark mode. Took longer than it should have because I rewrote the colors twice. Worth it.\n\nSpent the morning on support. Three people hit the same bug, so that's my afternoon now.\n\nI keep almost adding features nobody asked for. Writing that down so I stop.",
+  "updates": [
+    {
+      "id": "u1",
+      "type": "launch",
+      "format": "x",
+      "raw": "Shipped CSV export in Tally today. Two beta users had asked for it. You pick the columns and it downloads straight away.",
+      "founderVersion": "CSV export is live in Tally. Two of you asked, so: pick your columns, hit download, done. Thanks for the nudge."
+    },
+    {
+      "id": "u2",
+      "type": "bugfix",
+      "format": "linkedin",
+      "raw": "Fixed the bug that logged people out after an hour. It was a refresh token that never got saved on Safari. 14 people emailed about it this week.",
+      "founderVersion": "If Tally kept logging you out: sorry, and it's fixed.\n\nThe cause was boring. Safari wasn't keeping the refresh token, so every hour you were back at the login screen. 14 of you emailed me about it this week, which is how I found it fast.\n\nIf you still see it, reply and tell me your browser."
+    },
+    {
+      "id": "u3",
+      "type": "lesson",
+      "format": "x",
+      "raw": "Lesson from this month: I spent two weeks on a dashboard nobody opened. The thing people actually used was the weekly email summary I built in an afternoon.",
+      "founderVersion": "Two weeks on a dashboard. Nobody opened it. The weekly email I built in an afternoon? Everyone reads it. Building less, asking more."
+    },
+    {
+      "id": "u4",
+      "type": "launch",
+      "format": "email",
+      "raw": "Tally now imports bank statements from PDFs, not just CSVs. It handles the five biggest UK banks. Import takes about 6 seconds.",
+      "founderVersion": "Hi all,\n\nQuick one: Tally can now read your bank statements straight from the PDF. No more exporting a CSV first. It works with the five biggest UK banks, and an import takes about 6 seconds.\n\nIf your bank isn't one of them, reply and tell me which it is.\n\nAda"
+    },
+    {
+      "id": "u5",
+      "type": "lesson",
+      "format": "linkedin",
+      "raw": "I raised prices from 9 to 15 a month for new customers. I expected complaints. Signups stayed the same and two people said it still felt cheap.",
+      "founderVersion": "I raised Tally's price for new customers, from 9 to 15 a month, and braced for complaints.\n\nNone came. Signups didn't move, and two people told me it still felt cheap.\n\nI'd been pricing for the customer I was scared of, not the one I have."
+    }
+  ]
+}
