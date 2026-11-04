@@ -20,6 +20,14 @@ describe("buildDraftPrompt", () => {
 describe("buildDraftPrompt: formats (2026-11-04)", () => {
   const base = { rawCapture: "Added CSV export. Two beta users asked for it.", founderName: "Ada" };
 
+  it("X keeps one idea per post and invites replies only where natural, never bait", () => {
+    const x = buildDraftPrompt({ ...base, channel: Channel.X });
+    expect(x).toContain("ONE idea per post");
+    expect(x).toContain("Where it fits naturally");
+    expect(x).toContain("engagement bait");
+    expect(buildDraftPrompt({ ...base, channel: Channel.LINKEDIN })).not.toContain("ONE idea per post");
+  });
+
   it("email keeps its greeting and the founder's sign-off", () => {
     const prompt = buildDraftPrompt({ ...base, channel: Channel.EMAIL });
     expect(prompt).toContain("FORMAT: a short email");

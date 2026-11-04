@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Patch } from "@nestjs/common";
+import { Body, Controller, Delete, HttpCode, Param, Patch } from "@nestjs/common";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { ContentPiecesService } from "./content-pieces.service";
 import { UpdateContentPieceDto } from "./dto/update-content-piece.dto";
@@ -10,5 +10,11 @@ export class ContentPiecesController {
   @Patch(":id")
   updateBody(@Param("id") id: string, @Body() dto: UpdateContentPieceDto, @CurrentUser() userId: string) {
     return this.contentPiecesService.updateBody(id, dto, userId);
+  }
+
+  @Delete(":id")
+  @HttpCode(204)
+  deletePiece(@Param("id") id: string, @CurrentUser() userId: string) {
+    return this.contentPiecesService.deletePiece(id, userId);
   }
 }

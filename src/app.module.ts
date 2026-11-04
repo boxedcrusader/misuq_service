@@ -12,6 +12,7 @@ import { GraduateModule } from "./modules/graduate/graduate.module";
 import { ReportBackModule } from "./modules/report-back/report-back.module";
 import { SendModule } from "./modules/send/send.module";
 import { VoiceModule } from "./modules/voice/voice.module";
+import { StatsModule } from "./modules/stats/stats.module";
 
 @Module({
   // isGlobal so every module can inject ConfigService without importing
@@ -37,6 +38,7 @@ import { VoiceModule } from "./modules/voice/voice.module";
     ReportBackModule,
     GraduateModule,
     VoiceModule,
+    StatsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

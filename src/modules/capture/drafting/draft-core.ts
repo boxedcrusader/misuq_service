@@ -53,6 +53,11 @@ const FORMAT_RULES: Record<DraftChannel, { reader: string[]; format: string[]; l
     format: [
       `FORMAT: ONE X post, not a thread. No greeting ("Hey all"), no sign-off — it appears under their`,
       `name. The first line is the hook and must work on its own in a fast-scrolling feed.`,
+      // X ranks replies and quotes far above likes (its open-sourced
+      // scoring, 2026-11-04). "Where it fits" keeps every post from ending
+      // in a forced question.
+      `ONE idea per post. Where it fits naturally, leave readers something easy to reply to: an honest`,
+      `question, or a take they can weigh in on. Never "Thoughts?", "Agree?" or other engagement bait.`,
     ],
     length: [
       `LENGTH: at most ${X_MAX_CHARS} characters INCLUDING spaces — a hard limit, count them. Usually`,

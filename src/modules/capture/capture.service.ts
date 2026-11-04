@@ -1,8 +1,9 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { reserveAiRequest } from "../../common/usage-limits";
 import { AiTask, Channel, ContentPieceStatus, ContentType, Stage, StoryStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStoryDto } from "./dto/create-story.dto";
+import { UpdateStoryDto } from "./dto/update-story.dto";
 import { DRAFTING_PROVIDER, DraftingProvider } from "./drafting/drafting.provider";
 
 interface PaginationParams {
@@ -29,7 +30,18 @@ interface PaginationParams {
 //               graduation MUST set graduatedAt and status = GRADUATED in
 //               the same transaction, or it reintroduces a two-sources-of-
 //               truth split between them.
-//   ARCHIVED  — not yet designed.
+//   ARCHIVED  — the founder sets a story aside (archiveStory below,
+//               2026-11-04). archivedFromStatus keeps the status it left,
+//               so unarchiveStory restores it exactly; an archived story is
+//               read-only (no drafting, editing, sending or reporting). Its
+//               outcomes stay in the founder's analytics.
+//   (back to) CAPTURED — ContentPiecesService.deletePiece, when the founder
+//               deletes a DRAFTED story's last unsent draft.
+//
+// "Sent" is the line nothing crosses: once any piece of a story has a Send,
+// a room has seen it, so the story can't be edited or deleted (only
+// archived). Each check below is folded into the write's own WHERE clause,
+// so a send landing mid-request can't slip past it.
 @Injectable()
 export class CaptureService {
   constructor(
@@ -139,6 +151,80 @@ export class CaptureService {
       data,
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
+  }
+
+  async updateStory(storyId: string, userId: string, dto: UpdateStoryDto) {
+    const story = await this.findOwnedStory(storyId, userId);
+    if (story.status === StoryStatus.ARCHIVED) {
+      throw new ConflictException(`Story ${storyId} is archived; restore it to edit it`);
+    }
+    if (dto.rawCapture !== undefined && dto.rawCapture.trim().length === 0) {
+      throw new BadRequestException("rawCapture should not be empty");
+    }
+    const { count } = await this.prisma.story.updateMany({
+      where: { id: storyId, status: { not: StoryStatus.ARCHIVED }, contentPieces: { none: { sends: { some: {} } } } },
+      data: {
+        ...(dto.rawCapture !== undefined && { rawCapture: dto.rawCapture.trim() }),
+        // An emptied title clears it rather than storing "".
+        ...(dto.title !== undefined && { title: dto.title.trim() || null }),
+        ...(dto.contentType !== undefined && { contentType: dto.contentType }),
+      },
+    });
+    if (count === 0) {
+      throw new ConflictException(`Story ${storyId} has been sent; what the room saw can't be changed`);
+    }
+    return this.prisma.story.findUniqueOrThrow({ where: { id: storyId } });
+  }
+
+  // A real delete (the founder owns their words), allowed only while nothing
+  // was sent: an unsent story has no outcome to keep. Its drafts go with it
+  // (ContentPiece -> Story is ON DELETE CASCADE). It gives back no daily
+  // drafts: AiRequest rows aren't tied to stories, so draft-then-delete
+  // can't get around the cap.
+  async deleteStory(storyId: string, userId: string): Promise<void> {
+    await this.findOwnedStory(storyId, userId);
+    const { count } = await this.prisma.story.deleteMany({
+      where: { id: storyId, contentPieces: { none: { sends: { some: {} } } } },
+    });
+    if (count === 0) {
+      throw new ConflictException(`Story ${storyId} has been sent, so it can't be deleted; archive it instead`);
+    }
+  }
+
+  async archiveStory(storyId: string, userId: string) {
+    const story = await this.findOwnedStory(storyId, userId);
+    if (story.status === StoryStatus.ARCHIVED) return story;
+    // Conditional on the status just read, so a transition landing in
+    // between (a send, a report) can't be recorded under a stale status.
+    const { count } = await this.prisma.story.updateMany({
+      where: { id: storyId, status: story.status },
+      data: { status: StoryStatus.ARCHIVED, archivedFromStatus: story.status },
+    });
+    if (count === 0) {
+      throw new ConflictException(`Story ${storyId} changed while it was being archived; try again`);
+    }
+    return this.prisma.story.findUniqueOrThrow({ where: { id: storyId } });
+  }
+
+  async unarchiveStory(storyId: string, userId: string) {
+    const story = await this.findOwnedStory(storyId, userId);
+    if (story.status !== StoryStatus.ARCHIVED) return story;
+    // archiveStory always sets archivedFromStatus; the fallback only covers
+    // an ARCHIVED row written some other way.
+    const restored = story.archivedFromStatus ?? StoryStatus.CAPTURED;
+    await this.prisma.story.updateMany({
+      where: { id: storyId, status: StoryStatus.ARCHIVED },
+      data: { status: restored, archivedFromStatus: null },
+    });
+    return this.prisma.story.findUniqueOrThrow({ where: { id: storyId } });
+  }
+
+  private async findOwnedStory(storyId: string, userId: string) {
+    const story = await this.prisma.story.findUnique({ where: { id: storyId } });
+    if (!story || story.userId !== userId) {
+      throw new NotFoundException(`Story ${storyId} not found`);
+    }
+    return story;
   }
 
   async findOne(id: string, userId: string) {

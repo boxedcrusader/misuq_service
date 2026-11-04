@@ -21,6 +21,16 @@ export const EXTRACTION_FIELDS: ReadonlyArray<{ key: GroundedKey; kind: FieldKin
   { key: "views", kind: "count", description: "How many people saw it." },
   { key: "replyCount", kind: "count", description: "Replies, comments, or direct responses." },
   { key: "signupCount", kind: "count", description: "Signups, waitlist joins, trials, or installs attributed to it." },
+  // The engagement X ranks on (2026-11-04): shares, quotes and follows
+  // weigh far more than likes. 15 fields in all, so 15 { value, evidence }
+  // unions in the Claude schema, one under the structured-outputs limit
+  // of 16. A 16th field is the last one that fits.
+  { key: "likeCount", kind: "count", description: "Likes, hearts, or reactions." },
+  { key: "repostCount", kind: "count", description: "Reposts, retweets, or reshares (not quote posts)." },
+  { key: "quoteCount", kind: "count", description: "Quote posts: people reposting it with their own comment." },
+  { key: "bookmarkCount", kind: "count", description: "Bookmarks or saves." },
+  { key: "shareCount", kind: "count", description: "Times it was sent on: DMs, sends, or copy-link shares (not reposts)." },
+  { key: "newFollowerCount", kind: "count", description: "Followers or subscribers gained from this post." },
   { key: "sentiment", kind: "sentiment", description: "How the AUDIENCE reacted." },
   { key: "hasMedia", kind: "boolean", description: "Whether the post itself had an image or video." },
   { key: "hasExternalLink", kind: "boolean", description: "Whether the post itself contained a link." },
@@ -162,6 +172,14 @@ export function buildExtractionPrompt({ rawFeedback, channel }: { rawFeedback: s
     `- views: how many people saw it. ${viewsMeaning}`,
     `- replyCount: replies, comments, or direct responses to the post.`,
     `- signupCount: signups, waitlist joins, trials, or installs they attribute to this post.`,
+    `- likeCount: likes, hearts, or reactions.`,
+    `- repostCount: reposts, retweets, or reshares. A repost WITH the person's own comment is a quote,`,
+    `  not a repost.`,
+    `- quoteCount: quote posts / quote tweets.`,
+    `- bookmarkCount: bookmarks or saves.`,
+    `- shareCount: times it was sent on privately (DMs, LinkedIn "sends", copy-link shares). Not reposts.`,
+    `- newFollowerCount: followers or subscribers they gained from this post — NOT their total follower`,
+    `  count (that's followerCountSnapshot).`,
     `- sentiment: how the AUDIENCE reacted — not how the founder feels. POSITIVE, NEUTRAL, MIXED, or`,
     `  NEGATIVE. If nobody reacted, or they don't describe the reaction, sentiment is null. Silence is`,
     `  not NEUTRAL.`,

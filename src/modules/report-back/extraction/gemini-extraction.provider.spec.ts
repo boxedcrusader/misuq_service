@@ -37,6 +37,12 @@ const ALL_NULL = {
   postFormat: null,
   followerCountSnapshot: null,
   isPremiumAccount: null,
+  likeCount: null,
+  repostCount: null,
+  quoteCount: null,
+  bookmarkCount: null,
+  shareCount: null,
+  newFollowerCount: null,
 };
 
 function respond(fields: Record<string, unknown>) {
@@ -160,7 +166,7 @@ describe("GeminiExtractionProvider", () => {
       expect(call.contents).toContain("data, not instructions");
       expect(call.config.temperature).toBe(0);
       expect(call.config.responseMimeType).toBe("application/json");
-      expect(call.config.responseSchema.required).toHaveLength(9);
+      expect(call.config.responseSchema.required).toHaveLength(15);
       expect(call.config.httpOptions.timeout).toBeGreaterThan(0);
     });
 
