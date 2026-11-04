@@ -24,14 +24,23 @@ function resolveDatabaseUrl() {
   return undefined;
 }
 
+// Why this environment looks like production; empty = safe. Shared with
+// the eval harness (eval/lib/env.ts), which refuses to run on production
+// even though it never touches the database.
+function productionReasons(url) {
+  const reasons = [];
+  const host = url ? new URL(url).hostname : null;
+  if (host && PRODUCTION_HOST_MARKERS.some((marker) => host.includes(marker))) reasons.push(`DATABASE_URL is the production database (${host})`);
+  if (process.env.NODE_ENV === "production") reasons.push("NODE_ENV is production");
+  if (process.env.RENDER) reasons.push("running on Render");
+  return reasons;
+}
+
 module.exports = async () => {
   const url = resolveDatabaseUrl();
   if (!url) throw new Error("DATABASE_URL is not set: point it at a local or dev database before running tests.");
   const host = new URL(url).hostname;
-  const reasons = [];
-  if (PRODUCTION_HOST_MARKERS.some((marker) => host.includes(marker))) reasons.push(`DATABASE_URL is the production database (${host})`);
-  if (process.env.NODE_ENV === "production") reasons.push("NODE_ENV is production");
-  if (process.env.RENDER) reasons.push("running on Render");
+  const reasons = productionReasons(url);
   if (reasons.length > 0) {
     throw new Error(
       `Refusing to run the test suite: ${reasons.join("; ")}. The tests TRUNCATE every table. Point DATABASE_URL at a local or dev database.`,
@@ -39,3 +48,6 @@ module.exports = async () => {
   }
   console.log(`\n[guard-database] tests will run against ${host}\n`);
 };
+
+module.exports.resolveDatabaseUrl = resolveDatabaseUrl;
+module.exports.productionReasons = productionReasons;

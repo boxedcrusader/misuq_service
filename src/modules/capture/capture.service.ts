@@ -5,6 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { CreateStoryDto } from "./dto/create-story.dto";
 import { UpdateStoryDto } from "./dto/update-story.dto";
 import { DRAFTING_PROVIDER, DraftingProvider } from "./drafting/drafting.provider";
+import { toDraftInput } from "./drafting/draft-input";
 
 interface PaginationParams {
   page?: number;
@@ -92,13 +93,15 @@ export class CaptureService {
       select: { styleSample: true },
     });
 
-    const draft = await this.draftingProvider.generateDraft({
-      rawCapture: story.rawCapture,
-      title: story.title ?? undefined,
-      channel,
-      voice: voiceProfile,
-      founderName: story.user.name,
-    });
+    const draft = await this.draftingProvider.generateDraft(
+      toDraftInput({
+        rawCapture: story.rawCapture,
+        title: story.title,
+        channel,
+        voiceProfile,
+        founderName: story.user.name,
+      }),
+    );
 
     // Draft creation and the Story's CAPTURED -> DRAFTED transition are
     // atomic: never a ContentPiece on disk with the parent Story still

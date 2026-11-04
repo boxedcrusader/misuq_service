@@ -6,7 +6,9 @@
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "prisma migrate deploy && node dist/main.js",
     "start:dev": "ts-node src/main.ts",
-    "test": "jest"
+    "test": "jest",
+    "eval:generate": "ts-node eval/generate.ts",
+    "eval:score": "ts-node eval/score.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.135.0",
@@ -40,7 +42,8 @@
     "testEnvironment": "node",
     "roots": [
       "<rootDir>/src",
-      "<rootDir>/test"
+      "<rootDir>/test",
+      "<rootDir>/eval"
     ],
     "testRegex": ".*\\.spec\\.ts$",
     "maxWorkers": 1,

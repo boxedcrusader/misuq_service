@@ -265,6 +265,22 @@ rewritten when the real value arrives later).
     - The X draft rule gained "ONE idea per post; where it fits naturally, leave something easy to reply to; never engagement bait". The web's report-back step asks for the counts and says to report back after ~48 h.
   - Tests: `capture/story-management.spec.ts` (DB: the sent line for edit, delete and delete-draft; real deletes; no refunded drafts; archive round-trip, idempotency and read-only; 404 for another founder), `stats/stats-core.spec.ts` (rules), `stats/stats.service.spec.ts` (DB: scoping and usage), and an extraction-core case for the new counts.
 - **Suggested next build step:** finish the deploy (Neon → Render → Cloudflare Pages), then onboard the beta founders (Studie AI, `@seyedele`). The consent prompt is deliberately deferred (§7). Then: switch production to Claude (add `ANTHROPIC_API_KEY`, `DRAFTING_LLM=claude`, `EXTRACTION_LLM=claude` in Render; the live tests above already passed, and it fixes the thin-draft / ignored-voice problem Flash-Lite had), the reformat-for-wider-channels step (§2 step 6, unbuilt), the NestJS major upgrade (clears the unreachable advisories above), the `AggregatedInsight` rollup job (must filter `tone IS NOT NULL`), mobile's flow screens, and actually using the send-as-is signal the edit-capture slice made capturable.
+- **M1 eval harness (2026-11-04): `eval/`, a blind 3-arm taste test of draft quality.** See `eval/README.md` for how to run it.
+  - **The arms:**
+    - **misuq:** production drafting, called directly via `toDraftInput` → `ClaudeDraftingProvider.generateDraft`.
+    - **plain:** the same model through that provider's own client, with the generation settings copied from the misuq request and the fixed bare prompt `plain-v1`.
+    - **founder:** the founder's handwritten version.
+  - **The pass bar** is pre-registered in `eval/lib/scoring.ts`: misuq beats plain on ≥80% of updates (ties count against) **and** is at least as good as the founder on ≥50%.
+  - **The only production change:** `drafting/draft-input.ts#toDraftInput`. It's the input mapping `draftStory` used to do inline, made pure so the harness drafts exactly what production drafts.
+  - **The harness reads the provider's private `client` field** on purpose, to share one client and count every call against the 40-call cap without touching production code. If that field is renamed, the run fails at start with a clear error.
+  - **Guarantees:**
+    - no database: the run fails if `PrismaService` or `NestFactory` gets loaded;
+    - no HTTP API;
+    - refuses production, using `test/guard-database.js#productionReasons`, now exported;
+    - shows the estimate and needs `--yes`;
+    - judge.html is leak-scanned before it's written.
+  - **Run outputs:** `eval/runs/` and the real `eval/updates.json` are gitignored.
+  - **First self-test** (example data, 10 calls): misuq 0 breakage flags, plain 10. Plain's problems: X posts of 700–1,100 characters, preambles, "here are a few options", markdown, and "60 minutes" invented from "an hour".
 - **Later features (decided, not scheduled):**
   - **Learn from edits** (founder decision 2026-11-04: added to the later list, not built now).
     - *Origin:* a developer asked on X whether Misuq learns from edits before publishing. Their example: a founder who keeps swapping feature details for customer use cases is teaching it what buyers should understand, not just how the founder writes.

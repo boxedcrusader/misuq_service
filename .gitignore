@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .env
+# Eval harness: run outputs (drafts.json and answer-key.json un-blind the
+# taste test) and the real input file (a founder's own words).
+eval/runs/
+eval/updates.json
