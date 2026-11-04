@@ -7,7 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { AiTask, Channel, ContentType, Niche, Prisma, SignalRecord, StoryStatus, Tone } from "@prisma/client";
+import { AiTask, AudienceType, Channel, ContentType, Niche, Prisma, SignalRecord, StoryStatus, Tone } from "@prisma/client";
 import { reserveAiRequest } from "../../common/usage-limits";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateReportDto } from "./dto/create-report.dto";
@@ -43,6 +43,7 @@ interface SignalSnapshot {
   contentType: ContentType;
   tone: Tone | null;
   audienceSizeSnapshot: number;
+  audienceTypeSnapshot: AudienceType;
 }
 
 // ContentPiece.tone OTHER means "the drafting step couldn't classify the
@@ -87,7 +88,7 @@ export class ReportBackService {
   async reportBack(dto: CreateReportDto, userId: string) {
     const send = await this.prisma.send.findUnique({
       where: { id: dto.sendId },
-      include: { contentPiece: { include: { story: { include: { user: true } } } } },
+      include: { audience: true, contentPiece: { include: { story: { include: { user: true } } } } },
     });
     const story = send?.contentPiece.story;
     if (!send || !story || story.userId !== userId) {
@@ -133,6 +134,7 @@ export class ReportBackService {
       contentType: story.contentType,
       tone: poolableTone(send.contentPiece.tone),
       audienceSizeSnapshot: send.audienceSizeSnapshot,
+      audienceTypeSnapshot: send.audience.type,
     };
 
     // Step 1 — the durable human fact.
@@ -179,7 +181,7 @@ export class ReportBackService {
       where: { id: feedbackReportId },
       include: {
         signalRecord: true,
-        send: { include: { contentPiece: { include: { story: { include: { user: true } } } } } },
+        send: { include: { audience: true, contentPiece: { include: { story: { include: { user: true } } } } } },
       },
     });
     const story = report?.send.contentPiece.story;
@@ -205,6 +207,7 @@ export class ReportBackService {
       contentType: story.contentType,
       tone: poolableTone(report.send.contentPiece.tone),
       audienceSizeSnapshot: report.send.audienceSizeSnapshot,
+      audienceTypeSnapshot: report.send.audience.type,
     });
 
     const { send: _send, signalRecord: _none, ...feedbackReport } = report;

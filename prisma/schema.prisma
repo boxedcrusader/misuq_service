@@ -76,6 +76,12 @@ enum AudienceType {
   DISCORD
   BETA_USERS
   PEERS
+  // Public rooms (founder decision 2026-11-04): a founder who builds in
+  // public can test a story on the followers they already have, then take
+  // what lands to their other channels. Results from these are tagged via
+  // SignalRecord.audienceTypeSnapshot so they never pool with warm-room ones.
+  X_FOLLOWERS
+  LINKEDIN_NETWORK
 }
 
 // Coarse structured read of the freeform feedback's overall tone (§5 step
@@ -357,6 +363,13 @@ model SignalRecord {
   // zero — the extraction step must never coerce a missing report into 0,
   // that fabricates a "nothing happened" fact the founder never said.
   audienceSizeSnapshot Int
+  // The KIND of room the signal came from, frozen at report time (§5 rule 1).
+  // Warm rooms (a list, peers) and public feeds (X followers) behave
+  // differently, so any aggregation must group or filter on this. Null only
+  // on rows written before 2026-11-04 (never backfilled: a guess would be
+  // immortal); every new row sets it. Safe to read from Audience.type at
+  // report time because a room's type can't change after creation.
+  audienceTypeSnapshot AudienceType?
   views                Int? // people who SAW it — distinct from audienceSizeSnapshot (who it was sent to)
   replyCount           Int?
   signupCount          Int?

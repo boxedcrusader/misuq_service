@@ -148,6 +148,27 @@ describe("CaptureService: capture -> draft happy path", () => {
     }
   });
 
+  it("drafts in the chosen format, and a later format never moves the story backwards", async () => {
+    const story = await service.captureStory({ rawCapture: "Shipped CSV export." }, userId);
+    const xPiece = await service.draftStory(story.id, userId, Channel.X);
+    expect(xPiece).toMatchObject({ channel: Channel.X, stage: "PREVIEW" });
+
+    await prisma.story.update({ where: { id: story.id }, data: { status: "STAGED" } });
+    await service.draftStory(story.id, userId, Channel.LINKEDIN);
+    expect((await service.findOne(story.id, userId)).status).toBe("STAGED");
+
+    await prisma.story.update({ where: { id: story.id }, data: { status: "GRADUATED", graduatedAt: new Date() } });
+    const widePiece = await service.draftStory(story.id, userId, Channel.LINKEDIN);
+    expect(widePiece).toMatchObject({ channel: Channel.LINKEDIN, stage: "WIDE" });
+    expect((await service.findOne(story.id, userId)).status).toBe("GRADUATED");
+  });
+
+  it("refuses to draft an archived story (409), before any AI call", async () => {
+    const story = await service.captureStory({ rawCapture: "Old news." }, userId);
+    await prisma.story.update({ where: { id: story.id }, data: { status: "ARCHIVED" } });
+    await expect(service.draftStory(story.id, userId)).rejects.toMatchObject({ status: 409 });
+  });
+
   it("writes NOTHING when draft generation fails -- no ContentPiece, status stays CAPTURED", async () => {
     // Proves the generate-before-transact ordering in draftStory (the
     // generation call happens BEFORE the $transaction opens): a failure

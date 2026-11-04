@@ -57,7 +57,7 @@ describe("ReportBackService: report (STAGED -> REPORTED) and the poolable-layer 
 
   async function createStagedSend(
     ownerId: string,
-    opts?: { audienceSize?: number; channel?: Channel; tone?: Tone; contentType?: ContentType },
+    opts?: { audienceSize?: number; channel?: Channel; tone?: Tone; contentType?: ContentType; audienceType?: AudienceType },
   ) {
     const story = await prisma.story.create({
       data: {
@@ -80,13 +80,22 @@ describe("ReportBackService: report (STAGED -> REPORTED) and the poolable-layer 
     });
     const audienceSize = opts?.audienceSize ?? 100;
     const audience = await prisma.audience.create({
-      data: { userId: ownerId, name: "Beta list", type: AudienceType.EMAIL_LIST, size: audienceSize },
+      data: { userId: ownerId, name: "Beta list", type: opts?.audienceType ?? AudienceType.EMAIL_LIST, size: audienceSize },
     });
     const send = await prisma.send.create({
       data: { contentPieceId: contentPiece.id, audienceId: audience.id, audienceSizeSnapshot: audienceSize },
     });
     return { story, contentPiece, audience, send };
   }
+
+  it("stamps the kind of room on the signal, so warm-room and public results never pool together", async () => {
+    const warm = await createStagedSend(userId);
+    const publicRoom = await createStagedSend(userId, { channel: Channel.X, audienceType: AudienceType.X_FOLLOWERS, audienceSize: 1200 });
+    const warmResult = await service.reportBack({ sendId: warm.send.id, rawFeedback: "4 replies" }, userId);
+    const publicResult = await service.reportBack({ sendId: publicRoom.send.id, rawFeedback: "800 views" }, userId);
+    expect(warmResult.signalRecord!.audienceTypeSnapshot).toBe(AudienceType.EMAIL_LIST);
+    expect(publicResult.signalRecord).toMatchObject({ audienceTypeSnapshot: AudienceType.X_FOLLOWERS, channel: Channel.X, audienceSizeSnapshot: 1200 });
+  });
 
   it("reports a STAGED Send: creates FeedbackReport + SignalRecord, flips Story to REPORTED", async () => {
     const { story, send } = await createStagedSend(userId);

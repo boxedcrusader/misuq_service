@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { reserveAiRequest } from "../../common/usage-limits";
 import { AiTask, Channel, ContentPieceStatus, ContentType, Stage, StoryStatus } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -50,7 +50,7 @@ export class CaptureService {
     });
   }
 
-  async draftStory(storyId: string, userId: string) {
+  async draftStory(storyId: string, userId: string, channel: Channel = Channel.EMAIL) {
     const story = await this.prisma.story.findUnique({
       where: { id: storyId },
       // The founder's name, so the draft can sign off as them instead of the
@@ -59,6 +59,9 @@ export class CaptureService {
     });
     if (!story || story.userId !== userId) {
       throw new NotFoundException(`Story ${storyId} not found`);
+    }
+    if (story.status === StoryStatus.ARCHIVED) {
+      throw new ConflictException(`Story ${storyId} is ARCHIVED; it can't be drafted`);
     }
 
     // Per-account and global daily AI caps (common/usage-limits.ts): the
@@ -80,26 +83,28 @@ export class CaptureService {
     const draft = await this.draftingProvider.generateDraft({
       rawCapture: story.rawCapture,
       title: story.title ?? undefined,
-      channel: Channel.EMAIL,
+      channel,
       voice: voiceProfile,
       founderName: story.user.name,
     });
 
     // Draft creation and the Story's CAPTURED -> DRAFTED transition are
     // atomic: never a ContentPiece on disk with the parent Story still
-    // reading a stale CAPTURED status. Unconditionally setting DRAFTED here
-    // is safe without a forward-only ordering guard because this slice only
-    // ever reaches CAPTURED or DRAFTED — re-drafting an already-DRAFTED
-    // story just re-sets the same value, which is a no-op, not a
-    // regression. A real ordering guard becomes necessary once STAGED+
-    // exist and draftStory could otherwise be called on a story that has
-    // already moved past DRAFTED.
+    // reading a stale CAPTURED status.
+    //
+    // Forward-only (2026-11-04): a founder can now draft the same story in
+    // another format at any point (e.g. take a graduated X post to
+    // LinkedIn), so status only moves CAPTURED -> DRAFTED here and is never
+    // pulled back from STAGED/REPORTED/GRADUATED. A draft made after
+    // graduation is a WIDE-stage piece: the reformat-for-wider-channels step.
+    const nextStatus = story.status === StoryStatus.CAPTURED ? StoryStatus.DRAFTED : story.status;
+    const stage = story.status === StoryStatus.GRADUATED ? Stage.WIDE : Stage.PREVIEW;
     const [contentPiece] = await this.prisma.$transaction([
       this.prisma.contentPiece.create({
         data: {
           storyId: story.id,
-          channel: Channel.EMAIL,
-          stage: Stage.PREVIEW,
+          channel,
+          stage,
           tone: draft.tone,
           body: draft.body,
           // Immutable snapshot, set once, same value as body at this
@@ -111,7 +116,7 @@ export class CaptureService {
       }),
       this.prisma.story.update({
         where: { id: story.id },
-        data: { status: StoryStatus.DRAFTED },
+        data: { status: nextStatus },
       }),
     ]);
 
