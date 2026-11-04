@@ -264,7 +264,19 @@ rewritten when the real value arrives later).
     - **15 fields is now 15 unions in the Claude schema, one under the structured-outputs limit of 16.** A 16th field is the last that fits; past that, the schema needs restructuring.
     - The X draft rule gained "ONE idea per post; where it fits naturally, leave something easy to reply to; never engagement bait". The web's report-back step asks for the counts and says to report back after ~48 h.
   - Tests: `capture/story-management.spec.ts` (DB: the sent line for edit, delete and delete-draft; real deletes; no refunded drafts; archive round-trip, idempotency and read-only; 404 for another founder), `stats/stats-core.spec.ts` (rules), `stats/stats.service.spec.ts` (DB: scoping and usage), and an extraction-core case for the new counts.
-- **Suggested next build step:** finish the deploy (Neon → Render → Cloudflare Pages), then onboard the beta founders (Studie AI, `@seyedele`). The consent prompt is deliberately deferred (§7). Then: switch production to Claude (add `ANTHROPIC_API_KEY`, `DRAFTING_LLM=claude`, `EXTRACTION_LLM=claude` in Render; the live tests above already passed, and it fixes the thin-draft / ignored-voice problem Flash-Lite had), the reformat-for-wider-channels step (§2 step 6, unbuilt), the NestJS major upgrade (clears the unreachable advisories above), the `AggregatedInsight` rollup job (must filter `tone IS NOT NULL`), mobile's flow screens, and actually using the send-as-is signal the edit-capture slice made capturable.
+- **Known test flake (2026-11-04):** in a full-suite run, `usage-limits.spec.ts`'s "10 parallel requests can't overshoot a cap of 3" test got one rejection that wasn't a 429. The cap itself held: exactly 3 succeeded. The test passes alone and when its file is re-run (6/6). The likely cause is a transaction timing out under the remote dev branch's ~300 ms per query. On Render, beside Neon, that's unlikely. Hardening it (a longer interactive-transaction timeout, or treating P2028 as retryable) changes production code, so ask the founder first.
+- **Suggested next build step (updated 2026-11-04, end of day):**
+  - **Done:** the deploy (API on Render, web on Cloudflare Pages, migrations on boot via `npm start`). Confirm the Render dashboard's Start Command is `npm start`.
+  - **Next:**
+    - Run the **M1 taste test** for real (`eval/README.md`). First, confirm the scoring judgement calls in PR #4 with the founder: founder-favourite updates decided by "post as-is", ties counting against misuq, and the literal reading of "at least as good as the founder". Then fill `eval/updates.json` and send `judge.html`.
+    - Onboard the beta founders (Studie AI, `@seyedele`). The consent prompt is deliberately deferred (§7).
+    - Switch production to Claude if not done: in Render, set `ANTHROPIC_API_KEY`, `DRAFTING_LLM=claude` and `EXTRACTION_LLM=claude`.
+  - **Then:**
+    - remembering what tone and angle worked per founder (the "remember" half of §2 step 6);
+    - the NestJS major upgrade (clears the unreachable advisories above);
+    - the `AggregatedInsight` rollup job (must filter `tone IS NOT NULL`) and the consent prompt, once there's volume;
+    - mobile's flow screens;
+    - the later features below.
 - **M1 eval harness (2026-11-04): `eval/`, a blind 3-arm taste test of draft quality.** See `eval/README.md` for how to run it.
   - **The arms:**
     - **misuq:** production drafting, called directly via `toDraftInput` → `ClaudeDraftingProvider.generateDraft`.
@@ -282,6 +294,20 @@ rewritten when the real value arrives later).
   - **Run outputs:** `eval/runs/` and the real `eval/updates.json` are gitignored.
   - **First self-test** (example data, 10 calls): misuq 0 breakage flags, plain 10. Plain's problems: X posts of 700–1,100 characters, preambles, "here are a few options", markdown, and "60 minutes" invented from "an hour".
 - **Later features (decided, not scheduled):**
+  - **Retrieval (RAG) for drafting** (explored 2026-11-04 at the founder's question; not decided).
+    - *Where it fits:*
+      - retrieve the founder's own best posts (same channel, ranked by replies per 1k views) as style and angle examples;
+      - retrieve the most relevant edit pairs, which is how "learn from edits" would work;
+      - retrieve recent posts, so a new draft doesn't repeat a hook.
+    - *Where it doesn't:*
+      - other founders' text (only structure is ever pooled, §7);
+      - scraped content (option A, rejected in §3);
+      - the frameworks and platform rules, which are small enough to sit in the prompt.
+    - *Order:*
+      - nothing until a founder has about 10 or more reported posts;
+      - then plain SQL selection, with no embeddings;
+      - pgvector on Neon only at hundreds of posts, or once matching by topic matters. Claude has no embeddings API, so use Gemini or Voyage.
+    - *Risks:* examples leaking old facts into new drafts (label them style-only; the number backstop catches numbers but not dates or claims), and learning from too few posts (§3). Input tokens roughly double per draft.
   - **Learn from edits** (founder decision 2026-11-04: added to the later list, not built now).
     - *Origin:* a developer asked on X whether Misuq learns from edits before publishing. Their example: a founder who keeps swapping feature details for customer use cases is teaching it what buyers should understand, not just how the founder writes.
     - *Today:* nothing learns from edits. `ContentPiece.generatedBody` (what Misuq wrote, immutable) and `body` (what was posted) are both stored, but drafting only reads the capture, channel, voice sample and name.
