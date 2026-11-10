@@ -21,4 +21,14 @@ export class HealthController {
     }
     return { status: "ok" };
   }
+
+  // Liveness only: no database call. For an external keep-alive pinger,
+  // which only needs to stop Render's free instance sleeping. Pinging
+  // /health instead would also keep Neon awake and burn its free compute.
+  @Public()
+  @SkipThrottle()
+  @Get("live")
+  live() {
+    return { status: "ok" };
+  }
 }
